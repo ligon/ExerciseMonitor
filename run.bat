@@ -59,6 +59,10 @@ if not exist ".venv\Scripts\python.exe" (
 )
 
 echo [3/3] Starting dashboard at http://localhost:8000 ...
-start "" "http://localhost:8000"
+:: Stop any previous ExerciseMonitor server still holding port 8000
+for /f "tokens=5" %%P in ('netstat -ano ^| findstr ":8000 " ^| findstr "LISTENING"') do (
+    taskkill /F /PID %%P >nul 2>nul
+)
+start "" "http://localhost:8000/?v=%RANDOM%"
 ".venv\Scripts\uvicorn.exe" app.main:app --host 127.0.0.1 --port 8000
 pause
