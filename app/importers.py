@@ -227,20 +227,31 @@ def parse_meals_csv(
     for i, col in enumerate(header):
         if "time" in col or "date" in col:
             ts_col = i
-        elif any(k in col for k in ("meal", "food", "eat", "ate", "what", "title", "desc")):
+        elif any(k in col for k in ("meal", "food", "eat", "ate", "what", "title", "desc", "event")):
             title_col = i
-        elif any(k in col for k in ("note", "comment", "context")):
+        elif any(k in col for k in ("note", "comment", "context", "type", "tag")):
             notes_col = i
 
     meals: List[Dict[str, Any]] = []
     for row in rows[1:]:
-        if not row or len(row) <= max(ts_col, title_col):
+        if not row or len(row) <= ts_col:
             continue
         ts_ms = parse_iso_or_flexible_ts(row[ts_col], default_tz=tz_name)
-        title = row[title_col].strip()
-        if not ts_ms or not title:
+        if not ts_ms:
             continue
+        title = row[title_col].strip() if title_col < len(row) else ""
         notes = row[notes_col].strip() if (notes_col is not None and notes_col < len(row)) else ""
+        # Allow a timestamp-only entry (defaults to "Unusual Event / Marker")
+        is_symptom = False
+        if not title:
+            title = "Unusual Event / Marker"
+            is_symptom = True
+        elif title.startswith("!") or any(
+            w in (title + " " + notes).lower()
+            for w in ("dizzy", "dizziness", "symptom", "lightheaded", "event", "marker", "fatigue", "headache", "nausea")
+        ):
+            title = title.lstrip("!").strip() or "Unusual Event / Marker"
+            is_symptom = True
         meals.append(
             {
                 "timestamp_ms": ts_ms,
@@ -250,7 +261,7 @@ def parse_meals_csv(
                 "protein_g": None,
                 "fat_g": None,
                 "calories": None,
-                "tag": "meal",
+                "tag": "symptom" if is_symptom else "meal",
                 "source": "google_sheet",
             }
         )
@@ -320,8 +331,17 @@ def parse_nightscout_or_xdrip_json(payload: Any, source: str = "xdrip_zukka") ->
             notes and sgv_raw is None
         ):
             carbs_f = float(carbs) if carbs is not None and str(carbs).strip() != "" else None
-            title = str(item.get("notes") or "").strip() or (
-                f"Meal ({int(carbs_f)}g carbs)" if carbs_f else "Logged Meal"
+            raw_note = str(item.get("notes") or "").strip()
+            is_symptom_note = (carbs_f is None or carbs_f == 0) and (
+                raw_note.startswith("!")
+                or "note" in ev_type
+                or any(
+                    w in raw_note.lower()
+                    for w in ("dizzy", "dizziness", "symptom", "lightheaded", "event", "marker", "fatigue", "headache")
+                )
+            )
+            title = raw_note.lstrip("!").strip() or (
+                f"Meal ({int(carbs_f)}g carbs)" if carbs_f else "Unusual Event / Note"
             )
             meals_list.append(
                 {
@@ -332,7 +352,7 @@ def parse_nightscout_or_xdrip_json(payload: Any, source: str = "xdrip_zukka") ->
                     "protein_g": float(item["protein"]) if item.get("protein") is not None else None,
                     "fat_g": float(item["fat"]) if item.get("fat") is not None else None,
                     "calories": None,
-                    "tag": "meal",
+                    "tag": "symptom" if is_symptom_note else "meal",
                     "source": source,
                 }
             )
@@ -394,6 +414,7 @@ def parse_garmin_fit_bytes(
 
     session_mesgs = messages.get("session_mesgs", [])
     record_mesgs = messages.get("record_mesgs", [])
+    lap_mesgs = messages.get("lap_mesgs", [])
 
     sport = "running"
     start_time_ms: Optional[int] = None
@@ -545,12 +566,13 @@ def parse_garmin_fit_bytes(
         end_time_ms = start_time_ms + int(duration_s * 1000)
 
     sport_label = sport.replace("_", " ").title()
+    workout_title = title_override or f"Garmin {sport_label}"
     workout_dict = {
         "external_id": ext_id,
         "start_time_ms": start_time_ms,
         "end_time_ms": end_time_ms,
         "sport": sport,
-        "title": title_override or f"Garmin {sport_label}",
+        "title": workout_title,
         "distance_m": round(distance_m, 1),
         "duration_s": round(duration_s, 1),
         "total_ascent_m": round(total_ascent_m, 1),
@@ -563,10 +585,43 @@ def parse_garmin_fit_bytes(
         "source": "garmin_fit",
     }
 
+    # Extract manual LAP button presses (`lap_trigger == 'manual'`) as watch event markers
+    manual_lap_events: List[Dict[str, Any]] = []
+    for idx, lap in enumerate(lap_mesgs):
+        trigger = str(lap.get("lap_trigger", "")).lower()
+        if trigger == "manual":
+            # The moment the user pressed the LAP button is the start_time of the NEXT lap (if present),
+            # or start_time + total_elapsed_time of this lap.
+            press_ts_ms: Optional[int] = None
+            if idx + 1 < len(lap_mesgs):
+                press_ts_ms = _dt_to_ms(lap_mesgs[idx + 1].get("start_time"))
+            if not press_ts_ms:
+                l_start = _dt_to_ms(lap.get("start_time"))
+                l_dur = float(lap.get("total_elapsed_time") or 0.0)
+                if l_start and l_dur > 0:
+                    press_ts_ms = l_start + int(l_dur * 1000)
+                else:
+                    press_ts_ms = _dt_to_ms(lap.get("timestamp"))
+            if press_ts_ms:
+                manual_lap_events.append(
+                    {
+                        "timestamp_ms": press_ts_ms,
+                        "title": f"Watch Lap Marker (#{idx + 1})",
+                        "notes": f"Manual LAP button pressed during {workout_title}",
+                        "carbs_g": None,
+                        "protein_g": None,
+                        "fat_g": None,
+                        "calories": None,
+                        "tag": "symptom",
+                        "source": "garmin_watch_lap",
+                    }
+                )
+
     return {
         "workout": workout_dict,
         "points": points,
         "heart_rate_readings": hr_readings,
         "glucose_readings": bg_readings,
+        "manual_lap_events": manual_lap_events,
         "errors": [str(e) for e in errors] if errors else [],
     }

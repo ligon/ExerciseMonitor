@@ -491,7 +491,8 @@
           <span class="legend-item"><span class="dot" style="background:#10b981;"></span>Stelo BG (mg/dL)</span>
           <span class="legend-item"><span class="dot" style="background:rgba(16,185,129,0.25);border:1px solid #10b981;"></span>Target Band (70–140)</span>
           <span class="legend-item"><span class="dot" style="background:#f43f5e;"></span>Garmin 24/7 HR (bpm)</span>
-          <span class="legend-item"><span class="dot" style="background:#f59e0b;"></span>Meal &amp; 2h Spike</span>
+          <span class="legend-item"><span class="dot" style="background:#f59e0b;"></span>Meal</span>
+          <span class="legend-item"><span class="dot" style="background:#e879f9;"></span>Symptom / Event</span>
           <span class="legend-item"><span class="dot" style="background:#38bdf8;"></span>Garmin Workout</span>
         </div>
       </div>
@@ -516,17 +517,22 @@
 
     <!-- Two Column: Meal Postprandial Excursion Cards + Workout Deep-Dive -->
     <div class="two-col">
-      <!-- Meals & Postprandial Excursion Analysis -->
+      <!-- Meals, Symptoms & Postprandial Excursion Analysis -->
       <div class="panel">
         <div class="panel-header">
-          <div class="panel-title">Meals &amp; 2-Hour Postprandial Glucose Response</div>
+          <div class="panel-title">Meals, Symptoms &amp; 2-Hour Glucose Trajectory</div>
           <span style="font-size:11.5px;color:var(--text-2);">Tip: Double-click any point on the timeline chart to pre-fill time</span>
         </div>
-        <!-- Inline 1-Line Descriptive Quick Logger (No Macros Required) -->
+        <!-- Inline 1-Line Descriptive Quick Logger (Meals or Unusual Events / Symptoms) -->
         <form id="quickMealForm" onsubmit="submitQuickMeal(event)" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;background:rgba(30,41,59,0.5);padding:10px;border-radius:10px;border:1px solid var(--border);">
-          <input type="datetime-local" id="quickMealDatetime" required style="width:185px;" title="Meal time in selected timezone" />
-          <input type="text" id="quickMealTitle" placeholder="Quick description (e.g., 2 eggs, sourdough toast &amp; coffee)" required style="flex:1;min-width:210px;" />
-          <button type="submit" class="primary">Log Meal</button>
+          <select id="quickEntryTag" style="width:130px;font-weight:600;">
+            <option value="meal">🍽️ Meal</option>
+            <option value="symptom">⚠️ Symptom / Event</option>
+          </select>
+          <input type="datetime-local" id="quickMealDatetime" required style="width:180px;" title="Event time in selected timezone" />
+          <input type="text" id="quickMealTitle" placeholder="Short description (optional for ⚠️ Event, e.g. 'Dizzy' or '2 eggs &amp; toast')" style="flex:1;min-width:190px;" />
+          <button type="submit" class="primary">Log</button>
+          <button type="button" onclick="stampUnusualEventNow()" style="background:rgba(232,121,249,0.16);color:#f0abfc;border-color:rgba(232,121,249,0.4);" title="1-click stamp an unusual event/symptom at the selected time">⚠️ Stamp Event</button>
           <button type="button" onclick="openModal('mealModal')" title="More options (notes / tags / optional macros)">⋯</button>
         </form>
         <div id="mealsContainer" class="meals-list"></div>
@@ -569,12 +575,13 @@
           <div class="form-group">
             <label>Category / Tag</label>
             <select id="mealTag">
-              <option value="breakfast">Breakfast</option>
-              <option value="lunch">Lunch</option>
-              <option value="dinner">Dinner</option>
-              <option value="snack">Snack</option>
-              <option value="pre_workout">Pre-Workout Fuel</option>
-              <option value="post_workout">Post-Workout Recovery</option>
+              <option value="symptom">⚠️ Unusual Event / Symptom (Dizziness, etc.)</option>
+              <option value="breakfast">🍽️ Breakfast</option>
+              <option value="lunch">🍽️ Lunch</option>
+              <option value="dinner">🍽️ Dinner</option>
+              <option value="snack">🍽️ Snack</option>
+              <option value="pre_workout">⚡ Pre-Workout Fuel</option>
+              <option value="post_workout">🔋 Post-Workout Recovery</option>
             </select>
           </div>
           <div class="form-group full">
@@ -1235,11 +1242,16 @@
         return;
       }
       container.innerHTML = meals.map(m => {
-        const badgeClass = m.classification === 'optimal' ? 'optimal' : (m.classification === 'moderate' ? 'moderate' : 'spike');
+        const isSymptom = m.tag === 'symptom';
+        const badgeClass = isSymptom
+          ? 'workout-ctx'
+          : (m.classification === 'optimal' ? 'optimal' : (m.classification === 'moderate' ? 'moderate' : 'spike'));
         const deltaStr = m.delta_bg != null ? `+${m.delta_bg} mg/dL` : 'N/A';
-        const badgeLabel = m.classification === 'optimal'
-          ? `Optimal (${deltaStr})`
-          : (m.classification === 'moderate' ? `Moderate (${deltaStr})` : `High Spike (${deltaStr})`);
+        const badgeLabel = isSymptom
+          ? `⚠️ Event (${deltaStr} 2h Δ)`
+          : (m.classification === 'optimal'
+              ? `Optimal (${deltaStr})`
+              : (m.classification === 'moderate' ? `Moderate (${deltaStr})` : `High Spike (${deltaStr})`));
 
         const macros = [];
         if (m.carbs_g != null) macros.push(`${m.carbs_g}g C`);
@@ -1247,25 +1259,30 @@
         if (m.fat_g != null) macros.push(`${m.fat_g}g F`);
         if (m.calories != null) macros.push(`${Math.round(m.calories)} kcal`);
 
+        const cardStyle = isSymptom
+          ? 'border-color:rgba(232,121,249,0.45);background:rgba(232,121,249,0.08);'
+          : '';
+        const iconPrefix = isSymptom ? '⚠️ ' : '🍽️ ';
+
         return `
-          <div class="meal-card" onmouseenter="highlightMeal(${m.id})" onmouseleave="highlightMeal(null)">
+          <div class="meal-card" style="${cardStyle}" onmouseenter="highlightMeal(${m.id})" onmouseleave="highlightMeal(null)">
             <div class="meal-top">
               <div>
-                <div class="meal-time">${fmtDateTimeShort(m.timestamp_ms)} &bull; ${(m.tag || 'meal').replace('_', ' ').toUpperCase()} ${macros.length ? '&bull; ' + macros.join(' / ') : ''}</div>
-                <div class="meal-title">${m.title}</div>
+                <div class="meal-time" style="${isSymptom ? 'color:#f0abfc;' : ''}">${fmtDateTimeShort(m.timestamp_ms)} &bull; ${(m.tag || 'meal').replace('_', ' ').toUpperCase()} ${macros.length ? '&bull; ' + macros.join(' / ') : ''}</div>
+                <div class="meal-title">${iconPrefix}${m.title}</div>
                 ${m.notes ? `<div style="font-size:12px;color:var(--text-2);margin-top:2px;">${m.notes}</div>` : ''}
               </div>
               <div style="display:flex;align-items:center;gap:6px;">
                 ${m.workout_context ? `<span class="badge workout-ctx">🏃 ${m.workout_context}</span>` : ''}
                 ${m.delta_bg != null ? `<span class="badge ${badgeClass}">${badgeLabel}</span>` : ''}
-                <button onclick="removeMeal(${m.id})" title="Delete meal" style="padding:3px 8px;font-size:11px;">✕</button>
+                <button onclick="removeMeal(${m.id})" title="Delete entry" style="padding:3px 8px;font-size:11px;">✕</button>
               </div>
             </div>
             <div class="meal-metrics">
-              <div><span>Baseline BG</span><strong>${m.baseline_bg != null ? m.baseline_bg + ' mg/dL' : '--'}</strong></div>
+              <div><span>BG at Event</span><strong>${m.baseline_bg != null ? m.baseline_bg + ' mg/dL' : '--'}</strong></div>
               <div><span>2h Peak BG</span><strong>${m.peak_bg != null ? m.peak_bg + ' mg/dL' : '--'}</strong></div>
               <div><span>Time to Peak</span><strong>${m.time_to_peak_min != null ? m.time_to_peak_min + ' min' : '--'}</strong></div>
-              <div><span>+2h Recovery BG</span><strong>${m.two_hour_bg != null ? m.two_hour_bg + ' mg/dL' : '--'}</strong></div>
+              <div><span>+2h BG</span><strong>${m.two_hour_bg != null ? m.two_hour_bg + ' mg/dL' : '--'}</strong></div>
             </div>
           </div>
         `;
@@ -1512,11 +1529,12 @@
         ctx.restore();
       }
 
-      // 7. Draw Meal Markers on Glucose Curve
+      // 7. Draw Meal & Symptom/Event Markers on Glucose Curve
       (t.meals || []).forEach(m => {
         const x = xForMs(m.timestamp_ms);
         const yBg = yForBg(m.baseline_bg || 100);
-        ctx.strokeStyle = 'rgba(245, 158, 11, 0.75)';
+        const isSymptom = m.tag === 'symptom';
+        ctx.strokeStyle = isSymptom ? 'rgba(232, 121, 249, 0.85)' : 'rgba(245, 158, 11, 0.75)';
         ctx.setLineDash([3, 3]);
         ctx.beginPath();
         ctx.moveTo(x, padT);
@@ -1524,15 +1542,15 @@
         ctx.stroke();
         ctx.setLineDash([]);
 
-        ctx.fillStyle = '#f59e0b';
+        ctx.fillStyle = isSymptom ? '#e879f9' : '#f59e0b';
         ctx.beginPath();
         ctx.arc(x, yBg, 5.5, 0, Math.PI * 2);
         ctx.fill();
 
-        const deltaTxt = m.delta_bg != null ? `+${Math.round(m.delta_bg)}` : '';
+        const deltaTxt = (!isSymptom && m.delta_bg != null) ? `+${Math.round(m.delta_bg)}` : '';
         ctx.font = '700 11px Inter, sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText(`🍽️ ${deltaTxt}`, x, Math.max(padT + 14, yBg - 10));
+        ctx.fillText(isSymptom ? `⚠️ ${m.title.slice(0, 14)}` : `🍽️ ${deltaTxt}`, x, Math.max(padT + 14, yBg - 10));
       });
 
       // 8. Interactive Crosshair
@@ -1896,9 +1914,16 @@
        ========================================================================= */
     async function submitQuickMeal(e) {
       e.preventDefault();
-      const title = document.getElementById('quickMealTitle').value.trim();
-      const dtVal = document.getElementById('quickMealDatetime').value;
-      if (!title || !dtVal) return;
+      const tag = document.getElementById('quickEntryTag').value;
+      let title = document.getElementById('quickMealTitle').value.trim();
+      if (!title) {
+        if (tag === 'symptom') {
+          title = 'Unusual Event / Symptom';
+        } else {
+          return showToast('Enter a short meal description (or click ⚠️ Stamp Event)', true);
+        }
+      }
+      const dtVal = document.getElementById('quickMealDatetime').value || formatTsForInput(Date.now());
       const res = await fetch('/api/meals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1906,12 +1931,31 @@
           title,
           datetime_iso: dtVal.length === 16 ? dtVal + ':00' : dtVal,
           tz: state.timeZone,
-          tag: 'meal',
+          tag,
         }),
       });
-      if (!res.ok) return showToast('Failed to log meal', true);
+      if (!res.ok) return showToast('Failed to log entry', true);
       document.getElementById('quickMealTitle').value = '';
-      showToast('Meal logged!');
+      showToast(tag === 'symptom' ? '⚠️ Symptom / Event logged!' : '🍽️ Meal logged!');
+      await fetchTimelineBuffer(false);
+    }
+
+    async function stampUnusualEventNow() {
+      const title = document.getElementById('quickMealTitle').value.trim() || 'Unusual Event / Symptom';
+      const dtVal = document.getElementById('quickMealDatetime').value || formatTsForInput(Date.now());
+      const res = await fetch('/api/meals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title,
+          datetime_iso: dtVal.length === 16 ? dtVal + ':00' : dtVal,
+          tz: state.timeZone,
+          tag: 'symptom',
+        }),
+      });
+      if (!res.ok) return showToast('Failed to stamp event', true);
+      document.getElementById('quickMealTitle').value = '';
+      showToast(`⚠️ Stamped "${title}" at ${dtVal.replace('T', ' ')}`);
       await fetchTimelineBuffer(false);
     }
 

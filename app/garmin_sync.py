@@ -174,6 +174,46 @@ def sync_garmin_connect(
             act_name = act.get("activityName") or "Garmin Workout"
             if not act_id:
                 continue
+
+            # Check if this Garmin activity is a quick wrist-stamped symptom/event marker
+            # (either a short <3 min 'other'/'health_snapshot'/'breathwork' activity, or named with '!' / symptom keyword)
+            act_type_key = str((act.get("activityType") or {}).get("typeKey") or "").lower()
+            act_dur_s = float(act.get("duration") or act.get("elapsedDuration") or 0.0)
+            act_desc = str(act.get("description") or "").strip()
+            name_lower = (act_name + " " + act_desc).lower()
+            is_watch_event_marker = (
+                act_name.strip().startswith("!")
+                or any(
+                    w in name_lower
+                    for w in ("dizzy", "dizziness", "symptom", "lightheaded", "event", "marker", "unusual")
+                )
+                or (
+                    0 < act_dur_s <= 180
+                    and act_type_key in ("other", "generic", "health_snapshot", "breathwork", "unclassified")
+                )
+            )
+            if is_watch_event_marker:
+                ev_ts_ms = act.get("beginTimestamp")
+                if not ev_ts_ms and act.get("startTimeGMT"):
+                    ev_ts_ms = parse_iso_or_flexible_ts(str(act["startTimeGMT"]) + "Z")
+                if ev_ts_ms:
+                    clean_title = act_name.strip().lstrip("!").strip() or "Watch Event Marker"
+                    insert_or_update_meal(
+                        {
+                            "timestamp_ms": int(ev_ts_ms),
+                            "title": clean_title,
+                            "notes": act_desc or f"Marked from Garmin watch ({act_type_key or 'activity'}, {int(round(act_dur_s))}s)",
+                            "carbs_g": None,
+                            "protein_g": None,
+                            "fat_g": None,
+                            "calories": None,
+                            "tag": "symptom",
+                            "source": "garmin_watch_marker",
+                        },
+                        db_path=db_path,
+                    )
+                    meals_synced += 1
+
             ext_id = f"garmin_{act_id}"
             if ext_id in existing_ext_ids:
                 workouts_synced += 1
@@ -189,6 +229,9 @@ def sync_garmin_connect(
                 total_hr_count += upsert_heart_rate_batch(parsed["heart_rate_readings"], db_path=db_path)
             if parsed["glucose_readings"]:
                 upsert_glucose_batch(parsed["glucose_readings"], db_path=db_path)
+            for lap_ev in parsed.get("manual_lap_events") or []:
+                insert_or_update_meal(lap_ev, db_path=db_path)
+                meals_synced += 1
             workouts_synced += 1
     except Exception:
         pass

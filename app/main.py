@@ -66,7 +66,7 @@ class MealCreateRequest(BaseModel):
     timestamp_ms: Optional[int] = None
     datetime_iso: Optional[str] = None
     tz: Optional[str] = "America/Los_Angeles"
-    title: str
+    title: Optional[str] = ""
     notes: Optional[str] = ""
     carbs_g: Optional[float] = None
     protein_g: Optional[float] = None
@@ -360,19 +360,21 @@ def create_or_update_meal_endpoint(req: MealCreateRequest):
     if ts_ms is None:
         ts_ms = int(datetime.now(tz_obj).timestamp() * 1000)
 
-    if not req.title.strip():
-        raise HTTPException(status_code=400, detail="Meal title is required")
+    tag_val = (req.tag or "meal").strip()
+    title_val = (req.title or "").strip()
+    if not title_val:
+        title_val = "Unusual Event / Symptom" if tag_val == "symptom" else "Logged Meal"
 
     meal_id = insert_or_update_meal(
         {
             "timestamp_ms": ts_ms,
-            "title": req.title.strip(),
+            "title": title_val,
             "notes": req.notes or "",
             "carbs_g": req.carbs_g,
             "protein_g": req.protein_g,
             "fat_g": req.fat_g,
             "calories": req.calories,
-            "tag": req.tag or "meal",
+            "tag": tag_val,
             "source": "manual",
         }
     )
@@ -440,6 +442,8 @@ async def import_garmin_fit(
     workout_id = upsert_workout(parsed["workout"], parsed["points"])
     hr_cnt = upsert_heart_rate_batch(parsed["heart_rate_readings"])
     bg_cnt = upsert_glucose_batch(parsed["glucose_readings"])
+    for lap_ev in parsed.get("manual_lap_events") or []:
+        insert_or_update_meal(lap_ev)
     w_date = datetime.fromtimestamp(parsed["workout"]["start_time_ms"] / 1000.0, tz=tz_obj).strftime("%Y-%m-%d")
 
     return {
