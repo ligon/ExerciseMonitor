@@ -1809,7 +1809,7 @@
       ctx.strokeRect(padL, padT, plotW, topH);
       ctx.strokeRect(padL, botT, plotW, botH);
 
-      // Timer pauses: shade in both bands; HR/speed lines break across them (no samples while paused)
+      // Timer pauses: shade in both bands; elevation/HR/speed break across them (no samples while paused)
       const pauses = (detail.workout && detail.workout.pauses) || [];
       pauses.forEach(([p0, p1]) => {
         const px0 = Math.max(padL, xForMs(p0));
@@ -1824,34 +1824,50 @@
           ctx.fillText(`⏸ ${Math.round((p1 - p0) / 60000)} min`, (px0 + px1) / 2 - 18, padT + 12);
         }
       });
-      const brk = (i) => i === 0 || pts[i].timestamp_ms - pts[i - 1].timestamp_ms > 60 * 1000;
+      const isGap = (t0, t1) =>
+        (t1 - t0 > 30 * 1000) || pauses.some(([p0, p1]) => p0 < t1 && p1 > t0);
 
-      // 1. Bottom Band: Shaded Altitude / Climb Terrain Profile
+      // 1. Bottom Band: Shaded Altitude / Climb Terrain Profile (broken cleanly across pauses)
       if (alts.length > 1) {
-        ctx.save();
-        ctx.beginPath();
-        pts.forEach((p, i) => {
-          const x = xForMs(p.timestamp_ms);
-          const y = yForAlt(p.altitude_m ?? altLow);
-          if (i === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
+        const altSegments = [];
+        let seg = [];
+        pts.forEach((p) => {
+          if (p.altitude_m == null) return;
+          if (seg.length && isGap(seg[seg.length - 1].timestamp_ms, p.timestamp_ms)) {
+            altSegments.push(seg);
+            seg = [];
+          }
+          seg.push(p);
         });
-        ctx.lineTo(padL + plotW, botT + botH);
-        ctx.lineTo(padL, botT + botH);
-        ctx.closePath();
-        ctx.fillStyle = 'rgba(168, 85, 247, 0.24)';
-        ctx.fill();
+        if (seg.length) altSegments.push(seg);
 
-        ctx.beginPath();
-        pts.forEach((p, i) => {
-          const x = xForMs(p.timestamp_ms);
-          const y = yForAlt(p.altitude_m ?? altLow);
-          if (i === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
-        });
+        ctx.save();
+        ctx.fillStyle = 'rgba(168, 85, 247, 0.24)';
         ctx.strokeStyle = '#a855f7';
         ctx.lineWidth = 2;
-        ctx.stroke();
+        altSegments.forEach((s) => {
+          if (s.length < 2) return;
+          ctx.beginPath();
+          s.forEach((p, idx) => {
+            const x = xForMs(p.timestamp_ms);
+            const y = yForAlt(p.altitude_m);
+            if (idx === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+          });
+          ctx.lineTo(xForMs(s[s.length - 1].timestamp_ms), botT + botH);
+          ctx.lineTo(xForMs(s[0].timestamp_ms), botT + botH);
+          ctx.closePath();
+          ctx.fill();
+
+          ctx.beginPath();
+          s.forEach((p, idx) => {
+            const x = xForMs(p.timestamp_ms);
+            const y = yForAlt(p.altitude_m);
+            if (idx === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+          });
+          ctx.stroke();
+        });
         ctx.restore();
       }
 
@@ -1859,12 +1875,14 @@
       if (spds.length > 1) {
         ctx.save();
         ctx.beginPath();
-        pts.forEach((p, i) => {
+        let prevTs = null;
+        pts.forEach((p) => {
           if (p.speed_mps == null) return;
           const x = xForMs(p.timestamp_ms);
           const y = yForSpd(p.speed_mps);
-          if (brk(i)) ctx.moveTo(x, y);
+          if (prevTs == null || isGap(prevTs, p.timestamp_ms)) ctx.moveTo(x, y);
           else ctx.lineTo(x, y);
+          prevTs = p.timestamp_ms;
         });
         ctx.strokeStyle = '#38bdf8';
         ctx.lineWidth = 1.8;
@@ -1876,12 +1894,14 @@
       if (hrs.length > 1) {
         ctx.save();
         ctx.beginPath();
-        pts.forEach((p, i) => {
+        let prevTs = null;
+        pts.forEach((p) => {
           if (p.heart_rate == null) return;
           const x = xForMs(p.timestamp_ms);
           const y = yForHr(p.heart_rate);
-          if (brk(i)) ctx.moveTo(x, y);
+          if (prevTs == null || isGap(prevTs, p.timestamp_ms)) ctx.moveTo(x, y);
           else ctx.lineTo(x, y);
+          prevTs = p.timestamp_ms;
         });
         ctx.strokeStyle = '#f43f5e';
         ctx.lineWidth = 1.8;
@@ -1932,29 +1952,43 @@
       // Hover Crosshair
       if (hoverX != null && hoverX >= padL && hoverX <= padL + plotW) {
         const hoverMs = minMs + ((hoverX - padL) / plotW) * spanMs;
-        let nearPt = pts[0], minDist = Infinity;
-        pts.forEach(p => {
-          const d = Math.abs(p.timestamp_ms - hoverMs);
-          if (d < minDist) { minDist = d; nearPt = p; }
-        });
-
-        const cx = xForMs(nearPt.timestamp_ms);
-        ctx.strokeStyle = 'rgba(248, 250, 252, 0.55)';
-        ctx.beginPath();
-        ctx.moveTo(cx, padT);
-        ctx.lineTo(cx, botT + botH);
-        ctx.stroke();
-
+        const activePause = pauses.find(([p0, p1]) => hoverMs >= p0 && hoverMs <= p1);
         const tip = document.getElementById('workoutTooltip');
-        const elapsedMin = Math.floor((nearPt.elapsed_s || 0) / 60);
-        const elapsedSec = Math.round((nearPt.elapsed_s || 0) % 60);
-        tip.innerHTML = `
-          <strong>+${elapsedMin}:${String(elapsedSec).padStart(2, '0')}</strong>
-          <span style="color:#10b981;font-weight:700;">BG: ${nearPt.glucose_mgdl != null ? nearPt.glucose_mgdl + ' mg/dL' : '--'}</span>
-          <span style="color:#f43f5e;font-weight:700;">HR: ${nearPt.heart_rate != null ? nearPt.heart_rate + ' bpm' : '--'}</span>
-          <span style="color:#38bdf8;font-weight:700;">Speed: ${fmtSpeed(nearPt.speed_mps)}</span>
-          <span style="color:#a855f7;font-weight:700;">Elev: ${fmtAltitude(nearPt.altitude_m)} (${nearPt.grade_pct != null ? (nearPt.grade_pct >= 0 ? '+' : '') + nearPt.grade_pct + '% grade' : '0%'})</span>
-        `;
+        if (activePause) {
+          ctx.strokeStyle = 'rgba(148, 163, 184, 0.55)';
+          ctx.beginPath();
+          ctx.moveTo(hoverX, padT);
+          ctx.lineTo(hoverX, botT + botH);
+          ctx.stroke();
+          const durMin = ((activePause[1] - activePause[0]) / 60000).toFixed(1);
+          tip.innerHTML = `
+            <strong>⏸ Watch Paused</strong>
+            <span style="color:#94a3b8;">${fmtTimeLocal(activePause[0])} – ${fmtTimeLocal(activePause[1])} (${durMin} min — no GPS/HR/elevation samples recorded)</span>
+          `;
+        } else {
+          let nearPt = pts[0], minDist = Infinity;
+          pts.forEach(p => {
+            const d = Math.abs(p.timestamp_ms - hoverMs);
+            if (d < minDist) { minDist = d; nearPt = p; }
+          });
+
+          const cx = xForMs(nearPt.timestamp_ms);
+          ctx.strokeStyle = 'rgba(248, 250, 252, 0.55)';
+          ctx.beginPath();
+          ctx.moveTo(cx, padT);
+          ctx.lineTo(cx, botT + botH);
+          ctx.stroke();
+
+          const elapsedMin = Math.floor((nearPt.elapsed_s || 0) / 60);
+          const elapsedSec = Math.round((nearPt.elapsed_s || 0) % 60);
+          tip.innerHTML = `
+            <strong>+${elapsedMin}:${String(elapsedSec).padStart(2, '0')}</strong>
+            <span style="color:#10b981;font-weight:700;">BG: ${nearPt.glucose_mgdl != null ? nearPt.glucose_mgdl + ' mg/dL' : '--'}</span>
+            <span style="color:#f43f5e;font-weight:700;">HR: ${nearPt.heart_rate != null ? nearPt.heart_rate + ' bpm' : '--'}</span>
+            <span style="color:#38bdf8;font-weight:700;">Speed: ${fmtSpeed(nearPt.speed_mps)}</span>
+            <span style="color:#a855f7;font-weight:700;">Elev: ${fmtAltitude(nearPt.altitude_m)} (${nearPt.grade_pct != null ? (nearPt.grade_pct >= 0 ? '+' : '') + nearPt.grade_pct + '% grade' : '0%'})</span>
+          `;
+        }
       }
     }
 
