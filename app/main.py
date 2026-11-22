@@ -405,6 +405,19 @@ async def import_clarity_csv(
         text = raw.decode("latin-1")
 
     parsed = parse_dexcom_clarity_csv(text, tz_name=tz)
+    if parsed["glucose"]:
+        from app.clarity_sync import _prune_stale_clarity_rows
+
+        new_ts = [int(r["timestamp_ms"]) for r in parsed["glucose"]]
+        min_dt = datetime.fromtimestamp(min(new_ts) / 1000.0, tz=tz_obj)
+        min_day_start_ms = int(min_dt.replace(hour=0, minute=0, second=0, microsecond=0).timestamp() * 1000)
+        max_date = datetime.fromtimestamp(max(new_ts) / 1000.0, tz=tz_obj).date()
+        today_local = datetime.now(tz_obj).date()
+        _prune_stale_clarity_rows(
+            new_ts,
+            win_start_ms=min_day_start_ms,
+            win_end_ms=None if max_date >= today_local else max(new_ts),
+        )
     g_cnt = upsert_glucose_batch(parsed["glucose"])
     m_cnt = 0
     for m in parsed["meals"]:

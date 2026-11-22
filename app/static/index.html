@@ -722,10 +722,13 @@
   <div id="toast" class="toast"></div>
 
   <script>
-    const detectedTz = 'America/Los_Angeles';
+    const detectedTz = (() => {
+      try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Los_Angeles'; }
+      catch { return 'America/Los_Angeles'; }
+    })();
     let state = {
       currentDate: null,
-      timeZone: localStorage.getItem('stelo_monitor_tz_v2') || 'America/Los_Angeles',
+      timeZone: localStorage.getItem('stelo_monitor_tz_v2') || detectedTz,
       useImperial: true, // true => mph & ft, false => km/h & m
       windowHours: 24,
       viewStartMs: null,
@@ -1033,7 +1036,15 @@
     document.getElementById('tzSelect').addEventListener('change', async (e) => {
       state.timeZone = e.target.value;
       localStorage.setItem('stelo_monitor_tz_v2', state.timeZone);
-      await initApp();
+      // Clarity CSV timestamps are naive local wall-clock times; re-sync automatically when
+      // changing timezone so stored Stelo BG rows are re-parsed and stale shifted rows pruned.
+      if (state.syncSettings && state.syncSettings.clarity_share_code) {
+        showToast(`Timezone set to ${state.timeZone} — re-syncing Stelo BG timestamps...`);
+        await syncAllNow(false);
+      } else {
+        await initApp();
+        showToast(`Timezone set to ${state.timeZone} (re-upload Clarity CSV if BG times look shifted)`);
+      }
     });
 
     document.getElementById('pollSelect').addEventListener('change', async (e) => {
