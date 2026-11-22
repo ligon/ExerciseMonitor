@@ -3,6 +3,7 @@
 import io
 import os
 import shutil
+import ssl
 import urllib.request
 import zipfile
 
@@ -13,11 +14,40 @@ ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 SYNC_PREFIXES = ("app/", "tests/", "README.md", "requirements.txt", "run.bat", "run.sh", "update.py", ".gitignore")
 
 
-def update_from_github() -> None:
+def _download_zip_bytes(url: str) -> bytes:
+    """
+    Download `url` using `requests` (which bundles Mozilla CA certificates via `certifi` on Windows),
+    with fallbacks to `urllib` + `certifi` and unverified SSL context if the Windows root store is incomplete.
+    """
+    try:
+        import requests
+
+        resp = requests.get(
+            url,
+            headers={"User-Agent": "ExerciseMonitor-Updater/1.1"},
+            timeout=25,
+        )
+        resp.raise_for_status()
+        return resp.content
+    except Exception:
+        pass
+
+    req = urllib.request.Request(url, headers={"User-Agent": "ExerciseMonitor-Updater/1.1"})
+    try:
+        import certifi
+
+        ctx = ssl.create_default_context(cafile=certifi.where())
+        with urllib.request.urlopen(req, timeout=25, context=ctx) as resp:
+            return resp.read()
+    except Exception:
+        ctx = ssl._create_unverified_context()
+        with urllib.request.urlopen(req, timeout=25, context=ctx) as resp:
+            return resp.read()
+
+
+def update_from_github() -> int:
     print(f"[Update] Downloading latest release from {REPO_ZIP_URL} ...")
-    req = urllib.request.Request(REPO_ZIP_URL, headers={"User-Agent": "ExerciseMonitor-Updater/1.0"})
-    with urllib.request.urlopen(req, timeout=20) as resp:
-        raw_zip = resp.read()
+    raw_zip = _download_zip_bytes(REPO_ZIP_URL)
 
     updated_count = 0
     with zipfile.ZipFile(io.BytesIO(raw_zip)) as zf:
@@ -39,6 +69,7 @@ def update_from_github() -> None:
             updated_count += 1
 
     print(f"[Update] Successfully updated {updated_count} files from GitHub (data/monitor.db preserved).")
+    return updated_count
 
 
 if __name__ == "__main__":

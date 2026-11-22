@@ -15,6 +15,7 @@ if exist ".git" (
     )
 ) else (
     if exist ".venv\Scripts\python.exe" (
+        for /f "delims=" %%C in ('".venv\Scripts\python.exe" -c "import certifi; print(certifi.where())" 2^>nul') do set SSL_CERT_FILE=%%C
         ".venv\Scripts\python.exe" update.py
     )
 )
