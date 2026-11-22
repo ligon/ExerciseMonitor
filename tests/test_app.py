@@ -197,3 +197,16 @@ def test_clarity_phone_timezone_offset_detection():
     assert _resolve_phone_utc_offset_ms([pacific_latest], "America/Los_Angeles", now_ms) is None
     # Historical export (newest reading days old) -> cannot infer
     assert _resolve_phone_utc_offset_ms([now_ms - 72 * HOUR_MS], "America/Denver", now_ms) is None
+
+
+def test_workout_pauses_decoded_and_moving_time_used():
+    from app.analytics import enrich_workout_detail
+
+    w = {
+        "start_time_ms": 0, "end_time_ms": 3_600_000, "duration_s": 3600.0, "timer_s": 1800.0,
+        "total_ascent_m": 300.0, "pauses_json": "[[600000, 2400000]]",
+    }
+    out = enrich_workout_detail(w, [], [])["workout"]
+    assert out["pauses"] == [[600000, 2400000]]
+    assert "pauses_json" not in out
+    assert out["vam_m_per_h"] == 600  # 300 m over 0.5 h moving, not 1 h elapsed

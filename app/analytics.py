@@ -1,6 +1,7 @@
 """24/7 Metabolic, Meal Excursion, and Workout Performance + Glucose Analytics."""
 
 import bisect
+import json
 import math
 from typing import Any, Dict, List, Optional
 
@@ -262,6 +263,14 @@ def enrich_workout_detail(
     Aligns 5-minute Stelo BG readings with high-frequency Garmin FIT workout points
     (HR, speed, climb/altitude, cadence, power, grade) and computes workout metabolic summary.
     """
+    workout = dict(workout)
+    # Decode timer pauses ([[pause_start_ms, pause_end_ms], ...]) stored as JSON
+    raw_pauses = workout.pop("pauses_json", None)
+    if "pauses" not in workout:
+        try:
+            workout["pauses"] = json.loads(raw_pauses) if raw_pauses else []
+        except (TypeError, ValueError):
+            workout["pauses"] = []
     sorted_bg = sorted(glucose_readings, key=lambda r: r["timestamp_ms"])
     bg_ts = [int(r["timestamp_ms"]) for r in sorted_bg]
     bg_vals = [float(r["value_mgdl"]) for r in sorted_bg]
@@ -288,7 +297,8 @@ def enrich_workout_detail(
         i1 = bisect.bisect_right(bg_ts, w_end)
         workout_bgs = [bg_vals[i] for i in range(i0, i1)]
 
-    duration_h = max(0.01, float(workout.get("duration_s") or 0.0) / 3600.0)
+    # Use moving (timer) time when known so pauses don't dilute climb rate
+    duration_h = max(0.01, float(workout.get("timer_s") or workout.get("duration_s") or 0.0) / 3600.0)
     ascent_m = float(workout.get("total_ascent_m") or 0.0)
     vam_m_per_h = round(ascent_m / duration_h, 0) if ascent_m > 0 else 0.0
 

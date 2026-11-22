@@ -432,6 +432,7 @@ def parse_garmin_fit_bytes(
     sport = "running"
     start_time_ms: Optional[int] = None
     duration_s = 0.0
+    timer_s: Optional[float] = None
     distance_m = 0.0
     total_ascent_m = 0.0
     total_descent_m = 0.0
@@ -446,6 +447,8 @@ def parse_garmin_fit_bytes(
         sport = str(sess.get("sport", "running")).lower()
         start_time_ms = _dt_to_ms(sess.get("start_time") or sess.get("timestamp"))
         duration_s = float(sess.get("total_elapsed_time") or sess.get("total_timer_time") or 0.0)
+        if sess.get("total_timer_time") is not None:
+            timer_s = float(sess["total_timer_time"])
         distance_m = float(sess.get("total_distance") or 0.0)
         total_ascent_m = float(sess.get("total_ascent") or 0.0)
         total_descent_m = float(sess.get("total_descent") or 0.0)
@@ -580,7 +583,29 @@ def parse_garmin_fit_bytes(
 
     sport_label = sport.replace("_", " ").title()
     workout_title = title_override or f"Garmin {sport_label}"
+
+    # Timer pauses: watch STOP (pause) -> START (resume) events. While paused the watch records no
+    # track points, so these spans explain gaps in per-second HR/speed inside the workout window.
+    pauses: List[List[int]] = []
+    pause_start: Optional[int] = None
+    for ev in sorted(
+        (e for e in messages.get("event_mesgs", []) if str(e.get("event", "")).lower() == "timer"),
+        key=lambda e: _dt_to_ms(e.get("timestamp")) or 0,
+    ):
+        ev_ts = _dt_to_ms(ev.get("timestamp"))
+        ev_type = str(ev.get("event_type", "")).lower()
+        if ev_ts is None:
+            continue
+        if ev_type in ("stop", "stop_all", "stop_disable", "stop_disable_all"):
+            pause_start = ev_ts
+        elif ev_type == "start" and pause_start is not None:
+            if ev_ts - pause_start >= 1000:
+                pauses.append([pause_start, ev_ts])
+            pause_start = None
+
     workout_dict = {
+        "timer_s": round(timer_s, 1) if timer_s is not None else None,
+        "pauses": pauses,
         "external_id": ext_id,
         "start_time_ms": start_time_ms,
         "end_time_ms": end_time_ms,

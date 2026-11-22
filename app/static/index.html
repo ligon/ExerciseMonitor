@@ -1336,7 +1336,13 @@
       const w = detail.workout;
       const strip = document.getElementById('workoutStatsStrip');
       const bgDeltaStr = w.delta_bg != null ? (w.delta_bg >= 0 ? `+${w.delta_bg}` : `${w.delta_bg}`) : '--';
+      const fmtMinSec = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
+      const nPauses = (w.pauses || []).length;
+      const timeStr = w.timer_s != null
+        ? `${fmtMinSec(w.timer_s)} moving / ${fmtMinSec(w.duration_s || 0)} total${nPauses ? ` (${nPauses} pause${nPauses > 1 ? 's' : ''})` : ''}`
+        : fmtMinSec(w.duration_s || 0);
       strip.innerHTML = `
+        <div class="w-stat"><span>Time</span><strong>${timeStr}</strong></div>
         <div class="w-stat"><span>Start &rarr; End BG</span><strong style="color:var(--accent-bg);">${w.start_bg ?? '--'} &rarr; ${w.end_bg ?? '--'} (${bgDeltaStr})</strong></div>
         <div class="w-stat"><span>Workout BG Range</span><strong>${w.min_bg ?? '--'} – ${w.max_bg ?? '--'} mg/dL</strong></div>
         <div class="w-stat"><span>Total Climb / Ascent</span><strong style="color:var(--accent-climb);">${fmtAltitude(w.total_ascent_m)}</strong></div>
@@ -1412,6 +1418,26 @@
         ctx.fillStyle = '#38bdf8';
         ctx.font = '600 11px Inter, sans-serif';
         ctx.fillText(`🏃 ${w.title}`, x0 + 6, padT + 15);
+        // Timer pauses: hatched grey bands (watch records no track points while paused)
+        (w.pauses || []).forEach(([p0, p1]) => {
+          const px0 = Math.max(padL, xForMs(p0));
+          const px1 = Math.min(padL + plotW, xForMs(p1));
+          if (px1 <= px0) return;
+          ctx.fillStyle = 'rgba(15, 23, 42, 0.55)';
+          ctx.fillRect(px0, padT, px1 - px0, plotH);
+          ctx.strokeStyle = 'rgba(148, 163, 184, 0.35)';
+          ctx.beginPath();
+          for (let hx = px0 - plotH; hx < px1; hx += 7) {
+            ctx.moveTo(Math.max(px0, hx), padT + plotH - Math.max(0, px0 - hx));
+            ctx.lineTo(Math.min(px1, hx + plotH), padT + Math.max(0, hx + plotH - px1));
+          }
+          ctx.stroke();
+          if (px1 - px0 > 14) {
+            ctx.fillStyle = '#94a3b8';
+            ctx.font = '600 10px Inter, sans-serif';
+            ctx.fillText('⏸', (px0 + px1) / 2 - 5, padT + plotH - 6);
+          }
+        });
       });
 
       // 3. Highlighted Meal 2-Hour Postprandial Window
@@ -1772,6 +1798,23 @@
       ctx.strokeRect(padL, padT, plotW, topH);
       ctx.strokeRect(padL, botT, plotW, botH);
 
+      // Timer pauses: shade in both bands; HR/speed lines break across them (no samples while paused)
+      const pauses = (detail.workout && detail.workout.pauses) || [];
+      pauses.forEach(([p0, p1]) => {
+        const px0 = Math.max(padL, xForMs(p0));
+        const px1 = Math.min(padL + plotW, xForMs(p1));
+        if (px1 <= px0) return;
+        ctx.fillStyle = 'rgba(100, 116, 139, 0.22)';
+        ctx.fillRect(px0, padT, px1 - px0, topH);
+        ctx.fillRect(px0, botT, px1 - px0, botH);
+        if (px1 - px0 > 30) {
+          ctx.fillStyle = '#94a3b8';
+          ctx.font = '600 10px Inter, sans-serif';
+          ctx.fillText(`⏸ ${Math.round((p1 - p0) / 60000)} min`, (px0 + px1) / 2 - 18, padT + 12);
+        }
+      });
+      const brk = (i) => i === 0 || pts[i].timestamp_ms - pts[i - 1].timestamp_ms > 60 * 1000;
+
       // 1. Bottom Band: Shaded Altitude / Climb Terrain Profile
       if (alts.length > 1) {
         ctx.save();
@@ -1809,7 +1852,7 @@
           if (p.speed_mps == null) return;
           const x = xForMs(p.timestamp_ms);
           const y = yForSpd(p.speed_mps);
-          if (i === 0) ctx.moveTo(x, y);
+          if (brk(i)) ctx.moveTo(x, y);
           else ctx.lineTo(x, y);
         });
         ctx.strokeStyle = '#38bdf8';
@@ -1826,7 +1869,7 @@
           if (p.heart_rate == null) return;
           const x = xForMs(p.timestamp_ms);
           const y = yForHr(p.heart_rate);
-          if (i === 0) ctx.moveTo(x, y);
+          if (brk(i)) ctx.moveTo(x, y);
           else ctx.lineTo(x, y);
         });
         ctx.strokeStyle = '#f43f5e';

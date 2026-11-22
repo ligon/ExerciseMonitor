@@ -159,9 +159,12 @@ def sync_garmin_connect(
 
     workouts_synced = 0
     with get_conn(db_path) as conn:
+        # Workouts imported before pause-tracking (timer_s IS NULL) are re-downloaded once to backfill pauses
         existing_ext_ids = {
             r["external_id"]
-            for r in conn.execute("SELECT external_id FROM workouts WHERE external_id IS NOT NULL").fetchall()
+            for r in conn.execute(
+                "SELECT external_id FROM workouts WHERE external_id IS NOT NULL AND timer_s IS NOT NULL"
+            ).fetchall()
         }
 
     try:

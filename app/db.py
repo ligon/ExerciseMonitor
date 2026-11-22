@@ -1,5 +1,6 @@
 """SQLite database layer for 24/7 Blood Glucose, Garmin HR, Meals, and FIT Workouts."""
 
+import json
 import os
 import sqlite3
 from contextlib import contextmanager
@@ -127,6 +128,12 @@ def init_db(db_path: Optional[str] = None) -> None:
         cols = [r["name"] for r in conn.execute("PRAGMA table_info(sync_settings)").fetchall()]
         if "meals_csv_url" not in cols:
             conn.execute("ALTER TABLE sync_settings ADD COLUMN meals_csv_url TEXT DEFAULT ''")
+        # Pause-aware workouts: moving (timer) time + list of [pause_start_ms, pause_end_ms]
+        w_cols = [r["name"] for r in conn.execute("PRAGMA table_info(workouts)").fetchall()]
+        if "timer_s" not in w_cols:
+            conn.execute("ALTER TABLE workouts ADD COLUMN timer_s REAL")
+        if "pauses_json" not in w_cols:
+            conn.execute("ALTER TABLE workouts ADD COLUMN pauses_json TEXT DEFAULT '[]'")
 
 
 def upsert_glucose_batch(readings: List[Dict[str, Any]], db_path: Optional[str] = None) -> int:
@@ -227,12 +234,14 @@ def upsert_workout(
             INSERT INTO workouts (
                 external_id, start_time_ms, end_time_ms, sport, title,
                 distance_m, duration_s, total_ascent_m, total_descent_m,
-                avg_hr, max_hr, avg_speed_mps, max_speed_mps, calories, source
+                avg_hr, max_hr, avg_speed_mps, max_speed_mps, calories, source,
+                timer_s, pauses_json
             )
             VALUES (
                 :external_id, :start_time_ms, :end_time_ms, :sport, :title,
                 :distance_m, :duration_s, :total_ascent_m, :total_descent_m,
-                :avg_hr, :max_hr, :avg_speed_mps, :max_speed_mps, :calories, :source
+                :avg_hr, :max_hr, :avg_speed_mps, :max_speed_mps, :calories, :source,
+                :timer_s, :pauses_json
             )
             ON CONFLICT(external_id) DO UPDATE SET
                 start_time_ms=excluded.start_time_ms,
@@ -248,10 +257,14 @@ def upsert_workout(
                 avg_speed_mps=excluded.avg_speed_mps,
                 max_speed_mps=excluded.max_speed_mps,
                 calories=excluded.calories,
-                source=excluded.source
+                source=excluded.source,
+                timer_s=excluded.timer_s,
+                pauses_json=excluded.pauses_json
             RETURNING id
             """,
             {
+                "timer_s": float(workout["timer_s"]) if workout.get("timer_s") is not None else None,
+                "pauses_json": json.dumps(workout.get("pauses") or []),
                 "external_id": workout["external_id"],
                 "start_time_ms": int(workout["start_time_ms"]),
                 "end_time_ms": int(workout["end_time_ms"]),
