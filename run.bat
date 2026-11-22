@@ -64,5 +64,5 @@ for /f "tokens=5" %%P in ('netstat -ano ^| findstr ":8000 " ^| findstr "LISTENIN
     taskkill /F /PID %%P >nul 2>nul
 )
 start "" "http://localhost:8000/?v=%RANDOM%"
-".venv\Scripts\uvicorn.exe" app.main:app --host 127.0.0.1 --port 8000
+".venv\Scripts\uvicorn.exe" app.main:app --host 0.0.0.0 --port 8000
 pause
