@@ -2,6 +2,7 @@
 
 import json
 import os
+import socket
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
@@ -577,7 +578,20 @@ def clarity_sync_endpoint(req: ClaritySyncRequest):
 
 @app.get("/api/sync/settings")
 def get_sync_settings_endpoint():
-    return get_sync_settings(include_secret=False)
+    cfg = get_sync_settings(include_secret=False)
+    hostname = socket.gethostname().split(".")[0]
+    lan_ip = None
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(0.2)
+        s.connect(("8.8.8.8", 80))
+        lan_ip = s.getsockname()[0]
+        s.close()
+    except Exception:
+        pass
+    cfg["mdns_url"] = f"http://{hostname}.local:8000"
+    cfg["lan_ip_url"] = f"http://{lan_ip}:8000" if lan_ip else None
+    return cfg
 
 
 @app.post("/api/sync/settings")

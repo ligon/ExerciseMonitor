@@ -698,15 +698,16 @@
 
       <!-- 4. Zukka / xDrip+ / Nightscout JSON & Webhook -->
       <div class="import-section">
-        <h3>4. Brother's iPhone (Zukka / xDrip4iOS) or xDrip+ JSON / Live Webhook</h3>
+        <h3>3. iPhone (Zukka) or Android (xDrip+) Live Wi-Fi Push</h3>
         <p>
-          <strong>Live Webhook:</strong> In Zukka or xDrip+, enable <em>Nightscout Upload (REST API)</em> and set the URL to
-          <code>http://&lt;this-device-ip&gt;:8000/api/v1</code> (pushes 5-min BG &amp; meal notes automatically).<br/>
-          <strong>Or upload a JSON export file:</strong>
+          <strong>No Static IP Needed:</strong> In Zukka (or xDrip+), go to <em>Settings &rarr; Nightscout</em>, turn it <strong>ON</strong>, set <em>API_SECRET</em> to any 12+ character word (e.g. <code>stelo12345678</code>), and set the <strong>URL</strong> to your computer's automatic Bonjour/mDNS name:<br/>
+          <code id="zukkaMdnsUrl" style="color:#38bdf8;font-weight:700;">http://&lt;computer-name&gt;.local:8000</code>
+          <span id="zukkaLanIpUrl" style="color:var(--text-2);"></span><br/>
+          <em>(Zukka queues meals &amp; notes while you're away from home and automatically uploads them as soon as you're back on home Wi-Fi!)</em>
         </p>
         <div style="display:flex;gap:8px;align-items:center;">
           <input type="file" id="nsJsonInput" accept=".json" style="flex:1;" />
-          <button onclick="uploadNightscoutJson()">Upload JSON</button>
+          <button onclick="uploadNightscoutJson()">Upload JSON Export</button>
         </div>
       </div>
 
@@ -1055,6 +1056,12 @@
         document.getElementById('garminEmail').value = cfg.garmin_email || '';
         document.getElementById('garminPwSavedBadge').textContent = cfg.has_garmin_password ? '(Saved ✓)' : '';
         document.getElementById('mealsCsvUrl').value = cfg.meals_csv_url || '';
+        if (cfg.mdns_url) {
+          document.getElementById('zukkaMdnsUrl').textContent = cfg.mdns_url;
+        }
+        if (cfg.lan_ip_url) {
+          document.getElementById('zukkaLanIpUrl').textContent = ` (or ${cfg.lan_ip_url})`;
+        }
         const pollStr = String(cfg.auto_poll_minutes ?? 15);
         document.getElementById('pollSelect').value = pollStr;
         document.getElementById('modalPollMinutes').value = pollStr;
