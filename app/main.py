@@ -656,9 +656,13 @@ def unified_sync_all_endpoint(req: UnifiedSyncRequest):
                 end_date_str=end_date,
                 tz_name=req.tz,
             )
-            parts.append(f"Stelo: {clarity_res['glucose_imported']} BG, {clarity_res['meals_imported']} meals")
-            if clarity_res.get("phone_utc_offset_h") is not None:
-                parts.append(f"[phone clock UTC{clarity_res['phone_utc_offset_h']:+g}h ≠ {req.tz}; BG times corrected]")
+            latest_bg_str = ""
+            if clarity_res.get("latest_bg_ts_ms"):
+                bg_dt = datetime.fromtimestamp(clarity_res["latest_bg_ts_ms"] / 1000.0, tz=tz_obj)
+                latest_bg_str = f" [thru {bg_dt.strftime('%H:%M')}; Clarity lags ~1h]"
+            parts.append(
+                f"Stelo: {clarity_res['glucose_imported']} BG{latest_bg_str}, {clarity_res['meals_imported']} meals"
+            )
         except Exception as exc:
             errors.append(f"Stelo/Clarity: {exc}")
 

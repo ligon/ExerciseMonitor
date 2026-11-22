@@ -1,17 +1,13 @@
 """Automated Dexcom Clarity CSV fetcher using a Clarity Share Code (sugarpull protocol)."""
 
 import base64
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 import json
-import math
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 import requests
 
 from app.db import get_conn, insert_or_update_meal, upsert_glucose_batch
 from app.importers import get_zoneinfo, parse_dexcom_clarity_csv
-
-MIN_MS = 60_000
-HOUR_MS = 3_600_000
 
 
 def _add_dashes(share_code: str) -> str:
@@ -125,52 +121,37 @@ def fetch_clarity_csv_via_share_code(
     return export_resp.text
 
 
-def _resolve_phone_utc_offset_ms(
-    naive_as_utc_ms: list, tz_name: Optional[str], now_ms: Optional[int] = None
-) -> Optional[int]:
+def _prune_stale_clarity_rows(
+    new_ts: List[int],
+    win_start_ms: Optional[int] = None,
+    win_end_ms: Optional[int] = None,
+    db_path: Optional[str] = None,
+) -> int:
     """
-    Clarity CSV timestamps are naive *phone-local* times. If the phone's clock is in a different
-    timezone from the dashboard (e.g. watch/dashboard on Mountain time while traveling, phone still
-    on Pacific), interpreting them in the dashboard timezone shifts every BG reading by the difference.
-
-    The newest EGV in a live export is at most a few minutes old, so (newest_naive - utc_now) reveals
-    the phone's real UTC offset. Returns None when the configured `tz_name` is already consistent
-    (or the export isn't live so nothing can be inferred); otherwise the detected offset in ms.
+    Remove `stelo_clarity` rows inside the freshly exported window whose exact timestamp is not
+    in the new export (e.g. duplicate/shifted rows left over after changing the dashboard timezone).
+    When `win_end_ms` is None (syncing through today), prune everything >= `win_start_ms` not in
+    `new_ts`, which also removes any rows previously shifted past the latest real Clarity reading.
     """
-    if not naive_as_utc_ms:
-        return None
-    now_ms = now_ms if now_ms is not None else int(datetime.now(timezone.utc).timestamp() * 1000)
-    raw = max(naive_as_utc_ms) - now_ms  # = phone_offset - staleness
-    if abs(raw) > 15 * HOUR_MS:
-        return None  # historical export; can't infer the phone offset
-
-    def _fits(offset_ms: int) -> bool:
-        residual = raw - offset_ms  # = -staleness
-        return -58 * MIN_MS < residual <= 2 * MIN_MS
-
-    cfg = get_zoneinfo(tz_name).utcoffset(datetime.now(timezone.utc))
-    if cfg is not None and _fits(int(cfg.total_seconds() * 1000)):
-        return None
-    detected = math.ceil((raw - 2 * MIN_MS) / HOUR_MS) * HOUR_MS
-    return detected if _fits(detected) else None
-
-
-def _prune_stale_clarity_rows(new_ts: list, db_path: Optional[str] = None) -> int:
-    """Remove stelo_clarity rows inside the freshly exported window that no longer match a reading
-    (e.g. rows previously stored with the wrong timezone offset)."""
     if not new_ts:
         return 0
-    # The Clarity export is authoritative for its window and its timestamps are stable, so any row
-    # whose exact timestamp isn't in the new export is stale. (A ±tolerance match would NOT work:
-    # an exact whole-hour shift lands stale rows on the same 5-minute grid, ±1 s.)
-    new_set = set(int(t) for t in new_ts)
+    new_set = {int(t) for t in new_ts}
+    lo = min(new_set) if win_start_ms is None else min(int(win_start_ms), min(new_set))
     with get_conn(db_path) as conn:
-        rows = conn.execute(
-            "SELECT id, timestamp_ms FROM glucose_readings WHERE source='stelo_clarity' AND timestamp_ms BETWEEN ? AND ?",
-            (min(new_set), max(new_set)),
-        ).fetchall()
+        if win_end_ms is None:
+            rows = conn.execute(
+                "SELECT id, timestamp_ms FROM glucose_readings WHERE source='stelo_clarity' AND timestamp_ms >= ?",
+                (lo,),
+            ).fetchall()
+        else:
+            hi = max(int(win_end_ms), max(new_set))
+            rows = conn.execute(
+                "SELECT id, timestamp_ms FROM glucose_readings WHERE source='stelo_clarity' AND timestamp_ms BETWEEN ? AND ?",
+                (lo, hi),
+            ).fetchall()
         stale = [(r["id"],) for r in rows if int(r["timestamp_ms"]) not in new_set]
-        conn.executemany("DELETE FROM glucose_readings WHERE id=?", stale)
+        if stale:
+            conn.executemany("DELETE FROM glucose_readings WHERE id=?", stale)
         return len(stale)
 
 
@@ -182,37 +163,50 @@ def sync_dexcom_clarity_share_code(
     db_path: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Download Clarity CSV using Share Code and import 5-minute BG + meal events into SQLite."""
+    end_date_str = end_date_str or start_date_str
     csv_text = fetch_clarity_csv_via_share_code(
         share_code=share_code,
         start_date_str=start_date_str,
         end_date_str=end_date_str,
     )
-    # Detect the phone's real UTC offset (it may differ from the dashboard timezone while traveling).
-    as_utc = parse_dexcom_clarity_csv(csv_text, tz_name="UTC")
-    phone_offset_ms = _resolve_phone_utc_offset_ms(
-        [g["timestamp_ms"] for g in as_utc["glucose"]], tz_name
-    )
-    if phone_offset_ms is None:
-        parsed = parse_dexcom_clarity_csv(csv_text, tz_name=tz_name)
-    else:
-        parsed = as_utc
-        for rec in parsed["glucose"] + parsed["meals"]:
-            for key in ("timestamp_ms", "start_time_ms", "end_time_ms"):
-                if isinstance(rec.get(key), (int, float)):
-                    rec[key] = int(rec[key]) - phone_offset_ms
+    # Dexcom Clarity CSV timestamps are naive local wall-clock times matching the phone's timezone.
+    # NOTE: Clarity holds back live Stelo readings by ~60 minutes (up to 3h per Dexcom docs), so
+    # never infer the phone's timezone from (max_ts - utc_now) — always trust the selected `tz_name`.
+    parsed = parse_dexcom_clarity_csv(csv_text, tz_name=tz_name)
+    new_ts = [int(g["timestamp_ms"]) for g in parsed["glucose"]]
 
-    pruned = _prune_stale_clarity_rows([g["timestamp_ms"] for g in parsed["glucose"]], db_path=db_path)
+    tz_obj = get_zoneinfo(tz_name)
+    win_start_ms: Optional[int] = None
+    win_end_ms: Optional[int] = None
+    try:
+        s_dt = datetime.strptime(start_date_str, "%Y-%m-%d").replace(tzinfo=tz_obj)
+        e_dt = datetime.strptime(end_date_str, "%Y-%m-%d").replace(tzinfo=tz_obj)
+        win_start_ms = int(s_dt.timestamp() * 1000)
+        today_local = datetime.now(tz_obj).date()
+        # If syncing through today, leave upper bound open so any stale future-shifted rows are pruned
+        if e_dt.date() < today_local:
+            win_end_ms = int((e_dt + timedelta(days=1)).timestamp() * 1000) - 1
+    except ValueError:
+        pass
+
+    pruned = _prune_stale_clarity_rows(
+        new_ts,
+        win_start_ms=win_start_ms,
+        win_end_ms=win_end_ms,
+        db_path=db_path,
+    )
     g_cnt = upsert_glucose_batch(parsed["glucose"], db_path=db_path)
     m_cnt = 0
     for m in parsed["meals"]:
         insert_or_update_meal(m, db_path=db_path)
         m_cnt += 1
 
+    latest_bg_ts_ms = max(new_ts) if new_ts else None
     return {
         "glucose_imported": g_cnt,
         "meals_imported": m_cnt,
         "stale_rows_pruned": pruned,
-        "phone_utc_offset_h": (phone_offset_ms / HOUR_MS) if phone_offset_ms is not None else None,
+        "latest_bg_ts_ms": latest_bg_ts_ms,
         "start_date": start_date_str,
-        "end_date": end_date_str or start_date_str,
+        "end_date": end_date_str,
     }

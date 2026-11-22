@@ -186,17 +186,33 @@ def test_unlogged_meal_spike_detection(client: TestClient):
 
 
 
-def test_clarity_phone_timezone_offset_detection():
-    from app.clarity_sync import HOUR_MS, MIN_MS, _resolve_phone_utc_offset_ms
+def test_clarity_stale_row_pruning_on_timezone_change(tmp_path):
+    from app.clarity_sync import _prune_stale_clarity_rows
+    from app.db import get_conn, upsert_glucose_batch
 
-    now_ms = 1_795_368_000_000
-    # Phone on Pacific (UTC-8), newest reading 4 min old, dashboard set to America/Denver (UTC-7 in Nov)
-    pacific_latest = now_ms - 8 * HOUR_MS - 4 * MIN_MS
-    assert _resolve_phone_utc_offset_ms([pacific_latest], "America/Denver", now_ms) == -8 * HOUR_MS
-    # Dashboard timezone matches the phone -> no correction (keep DST-aware IANA parsing)
-    assert _resolve_phone_utc_offset_ms([pacific_latest], "America/Los_Angeles", now_ms) is None
-    # Historical export (newest reading days old) -> cannot infer
-    assert _resolve_phone_utc_offset_ms([now_ms - 72 * HOUR_MS], "America/Denver", now_ms) is None
+    db_file = str(tmp_path / "prune.db")
+    init_db(db_file)
+    # Seed older history (before window), shifted (+1h) duplicates inside & past window, and valid rows
+    upsert_glucose_batch(
+        [
+            {"timestamp_ms": 1_000_000, "value_mgdl": 99.0, "source": "stelo_clarity"},   # older history
+            {"timestamp_ms": 5_000_000, "value_mgdl": 110.0, "source": "stelo_clarity"},  # valid
+            {"timestamp_ms": 5_300_000, "value_mgdl": 143.0, "source": "stelo_clarity"},  # valid
+            {"timestamp_ms": 5_300_500, "value_mgdl": 105.0, "source": "stelo_clarity"},  # stale inside window
+            {"timestamp_ms": 8_900_000, "value_mgdl": 143.0, "source": "stelo_clarity"},  # stale shifted past max
+        ],
+        db_path=db_file,
+    )
+    pruned = _prune_stale_clarity_rows(
+        [5_000_000, 5_300_000],
+        win_start_ms=4_000_000,
+        win_end_ms=None,
+        db_path=db_file,
+    )
+    assert pruned == 2
+    with get_conn(db_file) as conn:
+        remaining = [r["timestamp_ms"] for r in conn.execute("SELECT timestamp_ms FROM glucose_readings ORDER BY 1").fetchall()]
+    assert remaining == [1_000_000, 5_000_000, 5_300_000]
 
 
 def test_workout_pauses_decoded_and_moving_time_used():
