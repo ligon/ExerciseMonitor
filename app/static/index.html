@@ -412,8 +412,17 @@
       </div>
     </div>
     <div class="controls">
-      <label for="dateSelect" style="font-size:12px;color:var(--text-2);">Day:</label>
-      <select id="dateSelect"></select>
+      <label for="windowHoursSelect" style="font-size:12px;color:var(--text-2);">Window:</label>
+      <select id="windowHoursSelect" title="Visible Timeline Span">
+        <option value="12">12 Hours</option>
+        <option value="24" selected>24 Hours</option>
+        <option value="36">36 Hours</option>
+        <option value="48">48 Hours (2d)</option>
+        <option value="168">7 Days</option>
+        <option value="336">14 Days</option>
+      </select>
+      <label for="dateSelect" style="font-size:12px;color:var(--text-2);">Jump to:</label>
+      <select id="dateSelect" title="Jump viewport to a specific date"></select>
       <label for="tzSelect" style="font-size:12px;color:var(--text-2);">Timezone:</label>
       <select id="tzSelect" title="Display &amp; Day-Boundary Timezone"></select>
       <button id="unitToggleBtn" title="Switch Speed &amp; Elevation Units">Units: Imperial (mph / ft)</button>
@@ -471,25 +480,37 @@
       </div>
     </div>
 
-    <!-- Main 24/7 Synchronized Timeline Chart -->
+    <!-- Main Continuous Scrollable Timeline Chart -->
     <div class="panel">
       <div class="panel-header">
         <div class="panel-title">
-          24/7 Synchronized Timeline: Blood Glucose, Heart Rate, Meals &amp; Workouts
+          <span>Continuous Scrollable Timeline</span>
+          <span id="viewportRangeLabel" style="font-size:13px;font-weight:500;color:#38bdf8;margin-left:6px;"></span>
         </div>
         <div class="legend">
           <span class="legend-item"><span class="dot" style="background:#10b981;"></span>Stelo BG (mg/dL)</span>
           <span class="legend-item"><span class="dot" style="background:rgba(16,185,129,0.25);border:1px solid #10b981;"></span>Target Band (70–140)</span>
           <span class="legend-item"><span class="dot" style="background:#f43f5e;"></span>Garmin 24/7 HR (bpm)</span>
           <span class="legend-item"><span class="dot" style="background:#f59e0b;"></span>Meal &amp; 2h Spike</span>
-          <span class="legend-item"><span class="dot" style="background:#38bdf8;"></span>Garmin Workout Window</span>
+          <span class="legend-item"><span class="dot" style="background:#38bdf8;"></span>Garmin Workout</span>
         </div>
       </div>
       <div class="canvas-wrap">
-        <canvas id="timelineCanvas" height="340"></canvas>
+        <canvas id="timelineCanvas" height="340" style="cursor:grab;"></canvas>
+      </div>
+      <!-- Scroll / Scrubber Controls -->
+      <div style="display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap;">
+        <button onclick="panTimelineHours(-24)" title="Back 24 hours" style="padding:5px 10px;font-size:12px;">◀◀ -24h</button>
+        <button onclick="panTimelineHours(-6)" title="Back 6 hours" style="padding:5px 10px;font-size:12px;">◀ -6h</button>
+        <input type="range" id="timelineScrubber" min="0" max="1000" value="1000"
+               style="flex:1;min-width:160px;accent-color:#10b981;cursor:pointer;padding:0;"
+               title="Drag to scroll through time" />
+        <button onclick="panTimelineHours(6)" title="Forward 6 hours" style="padding:5px 10px;font-size:12px;">+6h ▶</button>
+        <button onclick="panTimelineHours(24)" title="Forward 24 hours" style="padding:5px 10px;font-size:12px;">+24h ▶▶</button>
+        <button class="secondary-accent" onclick="snapToLatest()" title="Snap to most recent readings" style="padding:5px 12px;font-size:12px;">⏭ Latest</button>
       </div>
       <div class="tooltip-bar" id="timelineTooltip">
-        Hover or drag across the 24-hour chart to inspect synchronized Stelo Blood Glucose, Garmin Heart Rate, Meals, and Exercise windows.
+        Drag the chart left/right (or use the slider / trackpad scroll) to pan continuously across days.
       </div>
     </div>
 
@@ -682,6 +703,13 @@
       currentDate: null,
       timeZone: localStorage.getItem('stelo_monitor_tz_v2') || 'America/Los_Angeles',
       useImperial: true, // true => mph & ft, false => km/h & m
+      windowHours: 24,
+      viewStartMs: null,
+      viewEndMs: null,
+      bufferStartMs: null,
+      bufferEndMs: null,
+      minBoundMs: null,
+      maxBoundMs: null,
       timeline: null,
       activeWorkoutId: null,
       activeWorkoutDetail: null,
@@ -689,6 +717,11 @@
       syncSettings: null,
       pollTimerId: null,
       isSyncing: false,
+      isDraggingChart: false,
+      dragStartX: 0,
+      dragInitialStartMs: 0,
+      dragInitialEndMs: 0,
+      fetchDebounceId: null,
     };
 
     function populateTimezoneSelect() {
@@ -738,6 +771,52 @@
       } catch (e) {
         const d = new Date(tsMs);
         return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+      }
+    }
+
+    function fmtDateTimeShort(tsMs) {
+      try {
+        return new Intl.DateTimeFormat('en-US', {
+          timeZone: state.timeZone,
+          weekday: 'short',
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false,
+        }).format(new Date(tsMs));
+      } catch (e) {
+        return new Date(tsMs).toISOString().slice(0, 16).replace('T', ' ');
+      }
+    }
+
+    function fmtDayBadge(tsMs) {
+      try {
+        return new Intl.DateTimeFormat('en-US', {
+          timeZone: state.timeZone,
+          weekday: 'short',
+          month: 'short',
+          day: 'numeric',
+        }).format(new Date(tsMs));
+      } catch (e) {
+        return new Date(tsMs).toISOString().slice(0, 10);
+      }
+    }
+
+    function getLocalHourMinute(tsMs) {
+      try {
+        const parts = new Intl.DateTimeFormat('en-US', {
+          timeZone: state.timeZone,
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false,
+        }).formatToParts(new Date(tsMs));
+        const h = parseInt(parts.find(p => p.type === 'hour')?.value || '0', 10);
+        const m = parseInt(parts.find(p => p.type === 'minute')?.value || '0', 10);
+        return { hour: h === 24 ? 0 : h, minute: m };
+      } catch (e) {
+        const d = new Date(tsMs);
+        return { hour: d.getHours(), minute: d.getMinutes() };
       }
     }
 
@@ -808,8 +887,124 @@
     });
 
     document.getElementById('dateSelect').addEventListener('change', (e) => {
-      loadDate(e.target.value);
+      jumpToDate(e.target.value);
     });
+
+    document.getElementById('windowHoursSelect').addEventListener('change', async (e) => {
+      state.windowHours = parseInt(e.target.value, 10) || 24;
+      const spanMs = state.windowHours * 3600 * 1000;
+      if (state.viewEndMs == null) {
+        state.viewEndMs = Date.now();
+      }
+      state.viewStartMs = state.viewEndMs - spanMs;
+      updateScrubberPosition();
+      await fetchTimelineBuffer(true);
+    });
+
+    document.getElementById('timelineScrubber').addEventListener('input', (e) => {
+      const val = parseFloat(e.target.value) / 1000.0; // 0.0 to 1.0
+      const spanMs = state.windowHours * 3600 * 1000;
+      const minEnd = (state.minBoundMs || (Date.now() - 14 * 86400000)) + spanMs;
+      const maxEnd = (state.maxBoundMs || Date.now()) + 30 * 60 * 1000;
+      const range = Math.max(3600000, maxEnd - minEnd);
+      state.viewEndMs = Math.round(minEnd + val * range);
+      state.viewStartMs = state.viewEndMs - spanMs;
+      renderDashboard();
+      scheduleBufferCheck();
+    });
+
+    function updateScrubberPosition() {
+      const scrubber = document.getElementById('timelineScrubber');
+      if (!scrubber || state.viewEndMs == null) return;
+      const spanMs = state.windowHours * 3600 * 1000;
+      const minEnd = (state.minBoundMs || (Date.now() - 14 * 86400000)) + spanMs;
+      const maxEnd = (state.maxBoundMs || Date.now()) + 30 * 60 * 1000;
+      const range = Math.max(3600000, maxEnd - minEnd);
+      const frac = Math.max(0, Math.min(1, (state.viewEndMs - minEnd) / range));
+      scrubber.value = String(Math.round(frac * 1000));
+    }
+
+    async function panTimelineHours(deltaHours) {
+      const spanMs = state.windowHours * 3600 * 1000;
+      state.viewEndMs = (state.viewEndMs || Date.now()) + deltaHours * 3600 * 1000;
+      state.viewStartMs = state.viewEndMs - spanMs;
+      updateScrubberPosition();
+      renderDashboard();
+      await checkAndRefetchBufferIfNeeded();
+    }
+
+    async function snapToLatest() {
+      const spanMs = state.windowHours * 3600 * 1000;
+      state.viewEndMs = (state.maxBoundMs || Date.now()) + 30 * 60 * 1000;
+      state.viewStartMs = state.viewEndMs - spanMs;
+      updateScrubberPosition();
+      await fetchTimelineBuffer(true);
+    }
+
+    async function jumpToDate(dateStr) {
+      state.currentDate = dateStr;
+      // Fetch that date's midnight-to-midnight bounds in selected timezone
+      const res = await fetch(`/api/timeline?date=${encodeURIComponent(dateStr)}&tz=${encodeURIComponent(state.timeZone)}`);
+      const dData = await res.json();
+      const spanMs = state.windowHours * 3600 * 1000;
+      state.viewEndMs = dData.end_ms;
+      state.viewStartMs = state.viewEndMs - spanMs;
+      updateScrubberPosition();
+      await fetchTimelineBuffer(true);
+    }
+
+    function scheduleBufferCheck() {
+      if (state.fetchDebounceId) clearTimeout(state.fetchDebounceId);
+      state.fetchDebounceId = setTimeout(() => {
+        checkAndRefetchBufferIfNeeded();
+      }, 160);
+    }
+
+    async function checkAndRefetchBufferIfNeeded() {
+      if (
+        state.bufferStartMs == null ||
+        state.bufferEndMs == null ||
+        state.viewStartMs < state.bufferStartMs ||
+        state.viewEndMs > state.bufferEndMs
+      ) {
+        await fetchTimelineBuffer(false);
+      }
+    }
+
+    async function fetchTimelineBuffer(resetWorkoutSelection = false) {
+      const spanMs = state.windowHours * 3600 * 1000;
+      // Load extra padding on both left and right so dragging is instant
+      const padMs = Math.max(24 * 3600 * 1000, spanMs);
+      const bStart = Math.round(state.viewStartMs - padMs);
+      const bEnd = Math.round(state.viewEndMs + padMs);
+      state.bufferStartMs = bStart;
+      state.bufferEndMs = bEnd;
+
+      const res = await fetch(
+        `/api/timeline?start_ms=${bStart}&end_ms=${bEnd}&tz=${encodeURIComponent(state.timeZone)}`
+      );
+      state.timeline = await res.json();
+      renderDashboard();
+
+      const visibleWorkouts = getVisibleWorkouts();
+      if (visibleWorkouts.length > 0) {
+        const keepCurrent = !resetWorkoutSelection && visibleWorkouts.some(w => w.id === state.activeWorkoutId);
+        if (!keepCurrent) {
+          await selectWorkout(visibleWorkouts[visibleWorkouts.length - 1].id);
+        }
+      } else {
+        state.activeWorkoutId = null;
+        state.activeWorkoutDetail = null;
+        renderEmptyWorkout();
+      }
+    }
+
+    function getVisibleWorkouts() {
+      if (!state.timeline || !state.timeline.workouts) return [];
+      return state.timeline.workouts.filter(
+        w => w.end_time_ms >= state.viewStartMs && w.start_time_ms <= state.viewEndMs
+      );
+    }
 
     document.getElementById('tzSelect').addEventListener('change', async (e) => {
       state.timeZone = e.target.value;
@@ -890,59 +1085,94 @@
         sel.appendChild(opt);
       });
       document.getElementById('demoBanner').style.display = data.counts.has_demo ? 'flex' : 'none';
-      const targetDate = state.currentDate && data.dates.includes(state.currentDate)
-        ? state.currentDate
-        : data.latest_date;
-      sel.value = targetDate;
-      await loadDate(targetDate);
+
+      state.maxBoundMs = data.latest_ts_ms || Date.now();
+      // Allow scrubbing across up to 30 days back (or earliest data if more recent)
+      const thirtyDaysAgo = state.maxBoundMs - 30 * 86400 * 1000;
+      state.minBoundMs = Math.min(data.earliest_bg_ts_ms || thirtyDaysAgo, thirtyDaysAgo);
+
+      const spanMs = state.windowHours * 3600 * 1000;
+      if (state.viewEndMs == null) {
+        state.viewEndMs = state.maxBoundMs + 30 * 60 * 1000;
+        state.viewStartMs = state.viewEndMs - spanMs;
+      }
+      state.currentDate = data.latest_date;
+      sel.value = data.latest_date;
+      updateScrubberPosition();
+      await fetchTimelineBuffer(true);
     }
 
     async function loadDate(dateStr) {
-      state.currentDate = dateStr;
-      const res = await fetch(`/api/timeline?date=${encodeURIComponent(dateStr)}&tz=${encodeURIComponent(state.timeZone)}`);
-      state.timeline = await res.json();
-      renderDashboard();
-
-      if (state.timeline.workouts && state.timeline.workouts.length > 0) {
-        await selectWorkout(state.timeline.workouts[0].id);
-      } else {
-        state.activeWorkoutId = null;
-        state.activeWorkoutDetail = null;
-        renderEmptyWorkout();
-      }
+      await jumpToDate(dateStr);
     }
 
     function renderDashboard() {
       const t = state.timeline;
-      if (!t) return;
-      const gs = t.glucose_summary || {};
-      const hs = t.hr_summary || {};
+      if (!t || state.viewStartMs == null || state.viewEndMs == null) return;
 
-      document.getElementById('kpiMeanBg').textContent = gs.mean_mgdl != null ? `${gs.mean_mgdl} mg/dL` : '--';
-      document.getElementById('kpiBgRange').textContent = gs.min_mgdl != null
-        ? `Min ${gs.min_mgdl} / Max ${gs.max_mgdl} mg/dL (${gs.count} pts)`
-        : 'No Stelo data for this day';
+      const vStart = state.viewStartMs;
+      const vEnd = state.viewEndMs;
 
-      document.getElementById('kpiTirTight').textContent = gs.tir_70_140_pct != null ? `${gs.tir_70_140_pct}%` : '--%';
-      document.getElementById('kpiTirStd').textContent = gs.tir_70_180_pct != null
-        ? `Standard (70–180): ${gs.tir_70_180_pct}%`
-        : 'Standard (70–180): --%';
+      document.getElementById('viewportRangeLabel').textContent =
+        `(${fmtDateTimeShort(vStart)} → ${fmtDateTimeShort(vEnd)})`;
 
-      document.getElementById('kpiCv').textContent = gs.cv_pct != null ? `${gs.cv_pct}%` : '--%';
-      document.getElementById('kpiSdGmi').textContent = gs.sd_mgdl != null
-        ? `SD: ${gs.sd_mgdl} mg/dL • GMI: ${gs.gmi_pct}%`
-        : 'Target CV < 20%';
+      // Filter buffered series to currently visible scrolled viewport [vStart, vEnd]
+      const visBg = (t.glucose || []).filter(r => r.timestamp_ms >= vStart && r.timestamp_ms <= vEnd);
+      const visHr = (t.heart_rate || []).filter(r => r.timestamp_ms >= vStart && r.timestamp_ms <= vEnd);
+      const visMeals = (t.meals || []).filter(m => m.timestamp_ms >= vStart && m.timestamp_ms <= vEnd);
+      const visUnlogged = (t.unlogged_meal_candidates || []).filter(
+        c => c.estimated_meal_ts_ms >= vStart && c.estimated_meal_ts_ms <= vEnd
+      );
+      const visWorkouts = getVisibleWorkouts();
 
-      document.getElementById('kpiRestingHr').textContent = hs.resting_hr != null ? `${hs.resting_hr} bpm` : '-- bpm';
-      document.getElementById('kpiHrRange').textContent = hs.avg_hr != null
-        ? `Avg ${hs.avg_hr} / Max ${hs.max_hr} bpm`
-        : 'No 24/7 Garmin HR yet';
+      // Recompute KPI summary live for the visible scrolled window
+      if (visBg.length > 0) {
+        const vals = visBg.map(r => r.value_mgdl);
+        const n = vals.length;
+        const mean = vals.reduce((a, b) => a + b, 0) / n;
+        const sd = Math.sqrt(vals.reduce((a, b) => a + (b - mean) ** 2, 0) / n);
+        const cv = mean > 0 ? (sd / mean) * 100 : 0;
+        const gmi = 3.31 + 0.02392 * mean;
+        const tirTight = (vals.filter(v => v >= 70 && v <= 140).length / n) * 100;
+        const tirStd = (vals.filter(v => v >= 70 && v <= 180).length / n) * 100;
 
-      document.getElementById('kpiWorkoutClimb').textContent = fmtAltitude(hs.total_climb_m || 0) + ' climb';
-      document.getElementById('kpiWorkoutDist').textContent = `${hs.total_workout_min || 0} min active • ${fmtDistance((hs.total_distance_km || 0) * 1000)}`;
+        document.getElementById('kpiMeanBg').textContent = `${mean.toFixed(1)} mg/dL`;
+        document.getElementById('kpiBgRange').textContent =
+          `Min ${Math.min(...vals).toFixed(0)} / Max ${Math.max(...vals).toFixed(0)} mg/dL (${n} pts)`;
+        document.getElementById('kpiTirTight').textContent = `${tirTight.toFixed(1)}%`;
+        document.getElementById('kpiTirStd').textContent = `Standard (70–180): ${tirStd.toFixed(1)}%`;
+        document.getElementById('kpiCv').textContent = `${cv.toFixed(1)}%`;
+        document.getElementById('kpiSdGmi').textContent = `SD: ${sd.toFixed(1)} mg/dL • GMI: ${gmi.toFixed(2)}%`;
+      } else {
+        document.getElementById('kpiMeanBg').textContent = '--';
+        document.getElementById('kpiBgRange').textContent = 'No Stelo data in visible window';
+        document.getElementById('kpiTirTight').textContent = '--%';
+        document.getElementById('kpiTirStd').textContent = 'Standard (70–180): --%';
+        document.getElementById('kpiCv').textContent = '--%';
+        document.getElementById('kpiSdGmi').textContent = 'Target CV < 20%';
+      }
 
-      renderMealsList(t.meals || [], t.unlogged_meal_candidates || []);
-      renderWorkoutButtons(t.workouts || []);
+      if (visHr.length > 0) {
+        const bpms = visHr.map(r => r.bpm);
+        const sorted = [...bpms].sort((a, b) => a - b);
+        const restHr = sorted[Math.max(0, Math.floor(sorted.length * 0.1))];
+        const avgHr = Math.round(bpms.reduce((a, b) => a + b, 0) / bpms.length);
+        document.getElementById('kpiRestingHr').textContent = `${restHr} bpm`;
+        document.getElementById('kpiHrRange').textContent =
+          `Avg ${avgHr} / Max ${Math.max(...bpms)} bpm (${bpms.length} pts)`;
+      } else {
+        document.getElementById('kpiRestingHr').textContent = '-- bpm';
+        document.getElementById('kpiHrRange').textContent = 'No Garmin HR in visible window';
+      }
+
+      const totalClimbM = visWorkouts.reduce((acc, w) => acc + (w.total_ascent_m || 0), 0);
+      const totalDistM = visWorkouts.reduce((acc, w) => acc + (w.distance_m || 0), 0);
+      const totalMin = Math.round(visWorkouts.reduce((acc, w) => acc + (w.duration_s || 0), 0) / 60);
+      document.getElementById('kpiWorkoutClimb').textContent = fmtAltitude(totalClimbM) + ' climb';
+      document.getElementById('kpiWorkoutDist').textContent = `${totalMin} min active • ${fmtDistance(totalDistM)}`;
+
+      renderMealsList(visMeals, visUnlogged);
+      renderWorkoutButtons(visWorkouts);
       draw24hTimelineChart();
     }
 
@@ -971,7 +1201,7 @@
         <div class="meal-card" style="border-style:dashed;border-color:rgba(245,158,11,0.55);background:rgba(245,158,11,0.08);">
           <div class="meal-top">
             <div>
-              <div class="meal-time" style="color:#fbbf24;">⚡ Auto-Detected Unlogged Glucose Spike at ${fmtTimeLocal(c.estimated_meal_ts_ms)}</div>
+              <div class="meal-time" style="color:#fbbf24;">⚡ Auto-Detected Unlogged Glucose Spike at ${fmtDateTimeShort(c.estimated_meal_ts_ms)}</div>
               <div class="meal-title" style="font-size:14px;">Probable Meal: ${c.baseline_bg} &rarr; ${c.peak_bg} mg/dL (+${c.delta_bg} mg/dL in ${c.time_to_peak_min}m)</div>
             </div>
             <button class="primary" onclick="openMealModalAtTimestamp(${c.estimated_meal_ts_ms})" style="padding:5px 10px;font-size:12px;">+ Label Meal</button>
@@ -980,7 +1210,7 @@
       `).join('');
 
       if (!meals.length && !candidatesHtml) {
-        container.innerHTML = `<div style="color:var(--text-2);font-size:13px;padding:18px 0;">No meals logged for this day yet. Click <strong>+ Add Meal</strong> or sync Garmin/Clarity.</div>`;
+        container.innerHTML = `<div style="color:var(--text-2);font-size:13px;padding:18px 0;">No meals logged in the visible time window. Click <strong>+ Add Meal</strong> or pan the timeline.</div>`;
         return;
       }
       container.innerHTML = candidatesHtml + meals.map(m => {
@@ -1000,7 +1230,7 @@
           <div class="meal-card" onmouseenter="highlightMeal(${m.id})" onmouseleave="highlightMeal(null)">
             <div class="meal-top">
               <div>
-                <div class="meal-time">${fmtTimeLocal(m.timestamp_ms)} &bull; ${(m.tag || 'meal').replace('_', ' ').toUpperCase()} ${macros.length ? '&bull; ' + macros.join(' / ') : ''}</div>
+                <div class="meal-time">${fmtDateTimeShort(m.timestamp_ms)} &bull; ${(m.tag || 'meal').replace('_', ' ').toUpperCase()} ${macros.length ? '&bull; ' + macros.join(' / ') : ''}</div>
                 <div class="meal-title">${m.title}</div>
                 ${m.notes ? `<div style="font-size:12px;color:var(--text-2);margin-top:2px;">${m.notes}</div>` : ''}
               </div>
@@ -1034,7 +1264,7 @@
       }
       wrap.innerHTML = workouts.map(w => `
         <button class="${w.id === state.activeWorkoutId ? 'primary' : ''}" onclick="selectWorkout(${w.id})">
-          ${fmtTimeUTC(w.start_time_ms)} ${w.title}
+          ${fmtDateTimeShort(w.start_time_ms)} ${w.title}
         </button>
       `).join('');
     }
@@ -1094,9 +1324,16 @@
 
       ctx.clearRect(0, 0, W, H);
 
-      const startMs = t.start_ms;
-      const endMs = t.end_ms;
+      const startMs = state.viewStartMs;
+      const endMs = state.viewEndMs;
+      if (startMs == null || endMs == null) return;
       const xForMs = (ms) => padL + ((ms - startMs) / (endMs - startMs)) * plotW;
+
+      // Clip plotting area so curves don't bleed outside axes during scrolling
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(padL, padT, plotW, plotH);
+      ctx.clip();
 
       // Y-axis Left: Blood Glucose (50 to 220 mg/dL)
       const bgMin = 50, bgMax = 220;
@@ -1143,6 +1380,9 @@
         }
       }
 
+      // Restore clip before drawing outside axes labels
+      ctx.restore();
+
       // 4. Grid & Axes Labels
       ctx.strokeStyle = 'rgba(148, 163, 184, 0.1)';
       ctx.fillStyle = '#94a3b8';
@@ -1165,18 +1405,57 @@
         ctx.fillText(`${hr}`, padL + plotW + 8, y + 4);
       });
 
-      // X-axis hour ticks (00:00 to 24:00)
-      ctx.textAlign = 'center';
-      ctx.fillStyle = '#94a3b8';
-      for (let h = 0; h <= 24; h += 3) {
-        const ms = startMs + h * 3600 * 1000;
+      // Dynamic X-axis hour ticks & Midnight Day Dividers across multi-day viewport
+      const spanHours = (endMs - startMs) / 3600000;
+      const tickStepHours = spanHours <= 14 ? 2 : (spanHours <= 30 ? 3 : (spanHours <= 60 ? 6 : (spanHours <= 180 ? 12 : 24)));
+      const firstHourMs = Math.ceil(startMs / 3600000) * 3600000;
+
+      for (let ms = firstHourMs; ms <= endMs; ms += 3600000) {
+        const hm = getLocalHourMinute(ms);
         const x = xForMs(ms);
-        ctx.beginPath();
-        ctx.moveTo(x, padT);
-        ctx.lineTo(x, padT + plotH);
-        ctx.stroke();
-        ctx.fillText(`${String(h).padStart(2, '0')}:00`, x, padT + plotH + 20);
+        if (x < padL || x > padL + plotW) continue;
+
+        const isMidnight = (hm.hour === 0 && hm.minute === 0);
+        if (isMidnight) {
+          // Draw crisp Midnight Day-Boundary Divider & Day Pill
+          ctx.save();
+          ctx.strokeStyle = 'rgba(56, 189, 248, 0.45)';
+          ctx.setLineDash([5, 4]);
+          ctx.lineWidth = 1.4;
+          ctx.beginPath();
+          ctx.moveTo(x, padT);
+          ctx.lineTo(x, padT + plotH);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.fillStyle = '#38bdf8';
+          ctx.font = '700 11px Inter, sans-serif';
+          ctx.textAlign = 'left';
+          ctx.fillText(`📅 ${fmtDayBadge(ms + 60000)}`, x + 5, padT + plotH - 8);
+          ctx.restore();
+        }
+
+        if (hm.hour % tickStepHours === 0) {
+          ctx.strokeStyle = 'rgba(148, 163, 184, 0.1)';
+          ctx.beginPath();
+          ctx.moveTo(x, padT);
+          ctx.lineTo(x, padT + plotH);
+          ctx.stroke();
+
+          ctx.fillStyle = isMidnight ? '#38bdf8' : '#94a3b8';
+          ctx.font = isMidnight ? '700 11px Inter, sans-serif' : '11px Inter, sans-serif';
+          ctx.textAlign = 'center';
+          const label = (isMidnight || spanHours > 48)
+            ? `${fmtDayBadge(ms)} ${String(hm.hour).padStart(2, '0')}:00`
+            : `${String(hm.hour).padStart(2, '0')}:00`;
+          ctx.fillText(label, x, padT + plotH + 20);
+        }
       }
+
+      // Clip again for data curves & markers
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(padL, padT, plotW, plotH);
+      ctx.clip();
 
       // 5. Draw 24/7 Heart Rate Curve
       const hrs = t.heart_rate || [];
@@ -1272,19 +1551,100 @@
 
         const tip = document.getElementById('timelineTooltip');
         tip.innerHTML = `
-          <strong>🕒 ${fmtTimeLocal(hoverMs)} (${state.timeZone})</strong>
+          <strong>🕒 ${fmtDateTimeShort(hoverMs)} (${state.timeZone})</strong>
           <span style="color:#10b981;font-weight:700;">Stelo BG: ${nearBg ? nearBg.value_mgdl + ' mg/dL' : '--'} ${nearBg && nearBg.trend ? '(' + nearBg.trend + ')' : ''}</span>
           <span style="color:#f43f5e;font-weight:700;">Garmin HR: ${nearHr ? nearHr.bpm + ' bpm' : '--'}</span>
         `;
       }
+      ctx.restore();
     }
 
     const tlCanvas = document.getElementById('timelineCanvas');
+
+    // Drag-to-pan (mouse & touch) + hover crosshair + wheel scroll
+    tlCanvas.addEventListener('mousedown', (e) => {
+      state.isDraggingChart = true;
+      state.dragStartX = e.clientX;
+      state.dragInitialStartMs = state.viewStartMs;
+      state.dragInitialEndMs = state.viewEndMs;
+      tlCanvas.style.cursor = 'grabbing';
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (state.isDraggingChart) {
+        state.isDraggingChart = false;
+        tlCanvas.style.cursor = 'grab';
+        checkAndRefetchBufferIfNeeded();
+      }
+    });
+
     tlCanvas.addEventListener('mousemove', (e) => {
       const rect = tlCanvas.getBoundingClientRect();
-      draw24hTimelineChart(e.clientX - rect.left);
+      const plotW = Math.max(100, rect.width - 104);
+      if (state.isDraggingChart) {
+        const dx = e.clientX - state.dragStartX;
+        const spanMs = state.dragInitialEndMs - state.dragInitialStartMs;
+        const shiftMs = Math.round((-dx / plotW) * spanMs);
+        state.viewStartMs = state.dragInitialStartMs + shiftMs;
+        state.viewEndMs = state.dragInitialEndMs + shiftMs;
+        updateScrubberPosition();
+        renderDashboard();
+        scheduleBufferCheck();
+      } else {
+        draw24hTimelineChart(e.clientX - rect.left);
+      }
     });
-    tlCanvas.addEventListener('mouseleave', () => draw24hTimelineChart(null));
+
+    tlCanvas.addEventListener('mouseleave', () => {
+      if (!state.isDraggingChart) draw24hTimelineChart(null);
+    });
+
+    // Touch drag support
+    tlCanvas.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 1) {
+        state.isDraggingChart = true;
+        state.dragStartX = e.touches[0].clientX;
+        state.dragInitialStartMs = state.viewStartMs;
+        state.dragInitialEndMs = state.viewEndMs;
+      }
+    }, { passive: true });
+
+    tlCanvas.addEventListener('touchmove', (e) => {
+      if (state.isDraggingChart && e.touches.length === 1) {
+        const rect = tlCanvas.getBoundingClientRect();
+        const plotW = Math.max(100, rect.width - 104);
+        const dx = e.touches[0].clientX - state.dragStartX;
+        const spanMs = state.dragInitialEndMs - state.dragInitialStartMs;
+        const shiftMs = Math.round((-dx / plotW) * spanMs);
+        state.viewStartMs = state.dragInitialStartMs + shiftMs;
+        state.viewEndMs = state.dragInitialEndMs + shiftMs;
+        updateScrubberPosition();
+        renderDashboard();
+        scheduleBufferCheck();
+      }
+    }, { passive: true });
+
+    tlCanvas.addEventListener('touchend', () => {
+      if (state.isDraggingChart) {
+        state.isDraggingChart = false;
+        checkAndRefetchBufferIfNeeded();
+      }
+    });
+
+    // Horizontal wheel / trackpad pan
+    tlCanvas.addEventListener('wheel', (e) => {
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY) || e.shiftKey) {
+        e.preventDefault();
+        const delta = Math.abs(e.deltaX) > 0 ? e.deltaX : e.deltaY;
+        const spanMs = state.viewEndMs - state.viewStartMs;
+        const shiftMs = Math.round((delta / 500.0) * spanMs);
+        state.viewStartMs += shiftMs;
+        state.viewEndMs += shiftMs;
+        updateScrubberPosition();
+        renderDashboard();
+        scheduleBufferCheck();
+      }
+    }, { passive: false });
 
     /* =========================================================================
        Workout Deep-Dive Multi-Trace Canvas (BG + HR + Speed + Altitude/Climb)

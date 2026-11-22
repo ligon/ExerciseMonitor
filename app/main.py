@@ -140,10 +140,32 @@ def get_available_dates(tz: str = Query(default="America/Los_Angeles")):
             "has_demo": conn.execute("SELECT COUNT(*) AS c FROM glucose_readings WHERE source='demo'").fetchone()["c"]
             > 0,
         }
+        bg_bounds = conn.execute(
+            "SELECT MIN(timestamp_ms) AS min_ts, MAX(timestamp_ms) AS max_ts FROM glucose_readings"
+        ).fetchone()
+        hr_bounds = conn.execute(
+            "SELECT MIN(timestamp_ms) AS min_ts, MAX(timestamp_ms) AS max_ts FROM heart_rate_readings"
+        ).fetchone()
+
+    now_ms = int(datetime.now(tz_obj).timestamp() * 1000)
+    max_candidates = [ts for ts in (bg_bounds["max_ts"], hr_bounds["max_ts"]) if ts is not None]
+    min_candidates = [ts for ts in (bg_bounds["min_ts"], hr_bounds["min_ts"]) if ts is not None]
+    latest_ts_ms = max(max_candidates) if max_candidates else now_ms
+    earliest_ts_ms = min(min_candidates) if min_candidates else (now_ms - 86_400_000)
+    earliest_bg_ts_ms = bg_bounds["min_ts"] or earliest_ts_ms
+
     today_str = datetime.now(tz_obj).strftime("%Y-%m-%d")
     if not dates:
         dates = [today_str]
-    return {"dates": dates, "latest_date": dates[0], "tz": str(tz_obj), "counts": counts}
+    return {
+        "dates": dates,
+        "latest_date": dates[0],
+        "latest_ts_ms": latest_ts_ms,
+        "earliest_ts_ms": earliest_ts_ms,
+        "earliest_bg_ts_ms": earliest_bg_ts_ms,
+        "tz": str(tz_obj),
+        "counts": counts,
+    }
 
 
 @app.get("/api/timeline")
@@ -185,18 +207,39 @@ def get_24h_timeline(
                 (start_ms, bg_query_end),
             ).fetchall()
         ]
-        hr_rows = [
-            dict(r)
-            for r in conn.execute(
-                """
-                SELECT id, timestamp_ms, bpm, source
-                FROM heart_rate_readings
-                WHERE timestamp_ms BETWEEN ? AND ?
-                ORDER BY timestamp_ms ASC
-                """,
-                (start_ms, end_ms),
-            ).fetchall()
-        ]
+        # If querying a multi-day range (> 48h), bucket heart rate to 2-minute intervals so scrolling remains 60fps
+        span_ms = max(1, end_ms - start_ms)
+        if span_ms > 2 * 86_400_000:
+            bucket_ms = 120_000 if span_ms <= 7 * 86_400_000 else 300_000
+            hr_rows = [
+                dict(r)
+                for r in conn.execute(
+                    """
+                    SELECT MIN(id) AS id,
+                           (timestamp_ms / ?) * ? AS timestamp_ms,
+                           CAST(ROUND(AVG(bpm)) AS INTEGER) AS bpm,
+                           MIN(source) AS source
+                    FROM heart_rate_readings
+                    WHERE timestamp_ms BETWEEN ? AND ?
+                    GROUP BY timestamp_ms / ?
+                    ORDER BY timestamp_ms ASC
+                    """,
+                    (bucket_ms, bucket_ms, start_ms, end_ms, bucket_ms),
+                ).fetchall()
+            ]
+        else:
+            hr_rows = [
+                dict(r)
+                for r in conn.execute(
+                    """
+                    SELECT id, timestamp_ms, bpm, source
+                    FROM heart_rate_readings
+                    WHERE timestamp_ms BETWEEN ? AND ?
+                    ORDER BY timestamp_ms ASC
+                    """,
+                    (start_ms, end_ms),
+                ).fetchall()
+            ]
         meal_rows = [
             dict(r)
             for r in conn.execute(
