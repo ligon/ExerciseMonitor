@@ -53,6 +53,8 @@ if not exist ".venv\Scripts\python.exe" (
         pause
         exit /b 1
     )
+) else (
+    ".venv\Scripts\pip.exe" install -q -r requirements.txt
 )
 
 echo [3/3] Starting dashboard at http://localhost:8000 ...
