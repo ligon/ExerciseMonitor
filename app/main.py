@@ -657,6 +657,8 @@ def unified_sync_all_endpoint(req: UnifiedSyncRequest):
                 tz_name=req.tz,
             )
             parts.append(f"Stelo: {clarity_res['glucose_imported']} BG, {clarity_res['meals_imported']} meals")
+            if clarity_res.get("phone_utc_offset_h") is not None:
+                parts.append(f"[phone clock UTC{clarity_res['phone_utc_offset_h']:+g}h ≠ {req.tz}; BG times corrected]")
         except Exception as exc:
             errors.append(f"Stelo/Clarity: {exc}")
 

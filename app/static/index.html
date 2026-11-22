@@ -1507,10 +1507,12 @@
       if (hrs.length > 1) {
         ctx.save();
         ctx.beginPath();
+        // Break the line across gaps (> 12 min) instead of drawing a misleading straight
+        // diagonal over periods where the watch hasn't uploaded (or didn't record) HR.
         hrs.forEach((r, idx) => {
           const x = xForMs(r.timestamp_ms);
           const y = yForHr(r.bpm);
-          if (idx === 0) ctx.moveTo(x, y);
+          if (idx === 0 || r.timestamp_ms - hrs[idx - 1].timestamp_ms > 12 * 60 * 1000) ctx.moveTo(x, y);
           else ctx.lineTo(x, y);
         });
         ctx.strokeStyle = 'rgba(244, 63, 94, 0.72)';
@@ -1524,10 +1526,11 @@
       if (bgs.length > 1) {
         ctx.save();
         ctx.beginPath();
+        // Break the line across gaps (> 16 min, i.e. 3+ missed 5-min Stelo readings).
         bgs.forEach((r, idx) => {
           const x = xForMs(r.timestamp_ms);
           const y = yForBg(r.value_mgdl);
-          if (idx === 0) ctx.moveTo(x, y);
+          if (idx === 0 || r.timestamp_ms - bgs[idx - 1].timestamp_ms > 16 * 60 * 1000) ctx.moveTo(x, y);
           else ctx.lineTo(x, y);
         });
         ctx.strokeStyle = '#10b981';

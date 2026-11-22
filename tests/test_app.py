@@ -186,3 +186,14 @@ def test_unlogged_meal_spike_detection(client: TestClient):
 
 
 
+def test_clarity_phone_timezone_offset_detection():
+    from app.clarity_sync import HOUR_MS, MIN_MS, _resolve_phone_utc_offset_ms
+
+    now_ms = 1_795_368_000_000
+    # Phone on Pacific (UTC-8), newest reading 4 min old, dashboard set to America/Denver (UTC-7 in Nov)
+    pacific_latest = now_ms - 8 * HOUR_MS - 4 * MIN_MS
+    assert _resolve_phone_utc_offset_ms([pacific_latest], "America/Denver", now_ms) == -8 * HOUR_MS
+    # Dashboard timezone matches the phone -> no correction (keep DST-aware IANA parsing)
+    assert _resolve_phone_utc_offset_ms([pacific_latest], "America/Los_Angeles", now_ms) is None
+    # Historical export (newest reading days old) -> cannot infer
+    assert _resolve_phone_utc_offset_ms([now_ms - 72 * HOUR_MS], "America/Denver", now_ms) is None
