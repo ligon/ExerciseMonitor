@@ -112,6 +112,7 @@ def init_db(db_path: Optional[str] = None) -> None:
                 clarity_share_code TEXT DEFAULT '',
                 garmin_email TEXT DEFAULT '',
                 garmin_password TEXT DEFAULT '',
+                meals_csv_url TEXT DEFAULT '',
                 auto_poll_minutes INTEGER NOT NULL DEFAULT 15,
                 lookback_days INTEGER NOT NULL DEFAULT 2,
                 last_sync_ms INTEGER,
@@ -122,6 +123,10 @@ def init_db(db_path: Optional[str] = None) -> None:
             VALUES (1, 15, 2);
             """
         )
+        # Ensure meals_csv_url column exists on older databases
+        cols = [r["name"] for r in conn.execute("PRAGMA table_info(sync_settings)").fetchall()]
+        if "meals_csv_url" not in cols:
+            conn.execute("ALTER TABLE sync_settings ADD COLUMN meals_csv_url TEXT DEFAULT ''")
 
 
 def upsert_glucose_batch(readings: List[Dict[str, Any]], db_path: Optional[str] = None) -> int:
@@ -347,6 +352,10 @@ def save_sync_settings(settings: Dict[str, Any], db_path: Optional[str] = None) 
         if garmin_password is None or garmin_password == "":
             garmin_password = cur.get("garmin_password", "")
 
+        meals_csv_url = settings.get("meals_csv_url")
+        if meals_csv_url is None:
+            meals_csv_url = cur.get("meals_csv_url", "")
+
         auto_poll_minutes = settings.get("auto_poll_minutes")
         if auto_poll_minutes is None:
             auto_poll_minutes = cur.get("auto_poll_minutes", 15)
@@ -361,6 +370,7 @@ def save_sync_settings(settings: Dict[str, Any], db_path: Optional[str] = None) 
             SET clarity_share_code = ?,
                 garmin_email = ?,
                 garmin_password = ?,
+                meals_csv_url = ?,
                 auto_poll_minutes = ?,
                 lookback_days = ?
             WHERE id = 1
@@ -369,6 +379,7 @@ def save_sync_settings(settings: Dict[str, Any], db_path: Optional[str] = None) 
                 str(share_code).strip(),
                 str(garmin_email).strip(),
                 str(garmin_password),
+                str(meals_csv_url).strip(),
                 int(auto_poll_minutes),
                 max(1, min(30, int(lookback_days))),
             ),

@@ -520,8 +520,15 @@
       <div class="panel">
         <div class="panel-header">
           <div class="panel-title">Meals &amp; 2-Hour Postprandial Glucose Response</div>
-          <button class="secondary-accent" onclick="openModal('mealModal')">+ Add Meal</button>
+          <span style="font-size:11.5px;color:var(--text-2);">Tip: Double-click any point on the timeline chart to pre-fill time</span>
         </div>
+        <!-- Inline 1-Line Descriptive Quick Logger (No Macros Required) -->
+        <form id="quickMealForm" onsubmit="submitQuickMeal(event)" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;background:rgba(30,41,59,0.5);padding:10px;border-radius:10px;border:1px solid var(--border);">
+          <input type="datetime-local" id="quickMealDatetime" required style="width:185px;" title="Meal time in selected timezone" />
+          <input type="text" id="quickMealTitle" placeholder="Quick description (e.g., 2 eggs, sourdough toast &amp; coffee)" required style="flex:1;min-width:210px;" />
+          <button type="submit" class="primary">Log Meal</button>
+          <button type="button" onclick="openModal('mealModal')" title="More options (notes / tags / optional macros)">⋯</button>
+        </form>
         <div id="mealsContainer" class="meals-list"></div>
       </div>
 
@@ -570,26 +577,31 @@
               <option value="post_workout">Post-Workout Recovery</option>
             </select>
           </div>
-          <div class="form-group">
-            <label>Carbs (g)</label>
-            <input type="number" step="0.1" id="mealCarbs" placeholder="e.g., 45" />
-          </div>
-          <div class="form-group">
-            <label>Protein (g)</label>
-            <input type="number" step="0.1" id="mealProtein" placeholder="e.g., 30" />
-          </div>
-          <div class="form-group">
-            <label>Fat (g)</label>
-            <input type="number" step="0.1" id="mealFat" placeholder="e.g., 15" />
-          </div>
-          <div class="form-group">
-            <label>Calories (kcal)</label>
-            <input type="number" step="1" id="mealCalories" placeholder="e.g., 435" />
-          </div>
           <div class="form-group full">
-            <label>Notes</label>
+            <label>Notes / Context</label>
             <input type="text" id="mealNotes" placeholder="Optional context (e.g., walked 15m after eating)" />
           </div>
+          <details class="form-group full" style="background:rgba(30,41,59,0.4);padding:10px 12px;border-radius:10px;border:1px solid var(--border);">
+            <summary style="cursor:pointer;font-size:12px;color:var(--text-2);font-weight:600;">Optional Macros (leave blank for descriptive logging)</summary>
+            <div class="form-grid" style="margin-top:10px;margin-bottom:0;">
+              <div class="form-group">
+                <label>Carbs (g)</label>
+                <input type="number" step="0.1" id="mealCarbs" placeholder="Optional" />
+              </div>
+              <div class="form-group">
+                <label>Protein (g)</label>
+                <input type="number" step="0.1" id="mealProtein" placeholder="Optional" />
+              </div>
+              <div class="form-group">
+                <label>Fat (g)</label>
+                <input type="number" step="0.1" id="mealFat" placeholder="Optional" />
+              </div>
+              <div class="form-group">
+                <label>Calories (kcal)</label>
+                <input type="number" step="1" id="mealCalories" placeholder="Optional" />
+              </div>
+            </div>
+          </details>
         </div>
         <div style="display:flex;justify-content:flex-end;gap:10px;">
           <button type="button" onclick="closeModal('mealModal')">Cancel</button>
@@ -645,6 +657,10 @@
               <option value="7">Past 7 days</option>
               <option value="14">Past 14 days</option>
             </select>
+          </div>
+          <div class="form-group full">
+            <label>Optional: Google Sheet Published CSV URL (for 1-tap Google Form meal logging from phone)</label>
+            <input type="url" id="mealsCsvUrl" placeholder="https://docs.google.com/spreadsheets/d/e/.../pub?output=csv" />
           </div>
         </div>
         <div style="display:flex;gap:8px;justify-content:flex-end;">
@@ -1031,6 +1047,7 @@
         document.getElementById('clarityShareCode').value = cfg.clarity_share_code || '';
         document.getElementById('garminEmail').value = cfg.garmin_email || '';
         document.getElementById('garminPwSavedBadge').textContent = cfg.has_garmin_password ? '(Saved ✓)' : '';
+        document.getElementById('mealsCsvUrl').value = cfg.meals_csv_url || '';
         const pollStr = String(cfg.auto_poll_minutes ?? 15);
         document.getElementById('pollSelect').value = pollStr;
         document.getElementById('modalPollMinutes').value = pollStr;
@@ -1171,12 +1188,12 @@
       document.getElementById('kpiWorkoutClimb').textContent = fmtAltitude(totalClimbM) + ' climb';
       document.getElementById('kpiWorkoutDist').textContent = `${totalMin} min active • ${fmtDistance(totalDistM)}`;
 
-      renderMealsList(visMeals, visUnlogged);
+      renderMealsList(visMeals);
       renderWorkoutButtons(visWorkouts);
       draw24hTimelineChart();
     }
 
-    function openMealModalAtTimestamp(tsMs) {
+    function formatTsForInput(tsMs) {
       try {
         const parts = new Intl.DateTimeFormat('en-CA', {
           timeZone: state.timeZone,
@@ -1189,31 +1206,35 @@
         }).formatToParts(new Date(tsMs));
         const get = (t) => parts.find(p => p.type === t)?.value || '00';
         const hh = get('hour') === '24' ? '00' : get('hour');
-        document.getElementById('mealDatetime').value = `${get('year')}-${get('month')}-${get('day')}T${hh}:${get('minute')}`;
-      } catch (e) {}
-      openModal('mealModal');
-      document.getElementById('mealTitle').focus();
+        return `${get('year')}-${get('month')}-${get('day')}T${hh}:${get('minute')}`;
+      } catch (e) {
+        return new Date(tsMs).toISOString().slice(0, 16);
+      }
     }
 
-    function renderMealsList(meals, unloggedCandidates = []) {
-      const container = document.getElementById('mealsContainer');
-      const candidatesHtml = (unloggedCandidates || []).map(c => `
-        <div class="meal-card" style="border-style:dashed;border-color:rgba(245,158,11,0.55);background:rgba(245,158,11,0.08);">
-          <div class="meal-top">
-            <div>
-              <div class="meal-time" style="color:#fbbf24;">⚡ Auto-Detected Unlogged Glucose Spike at ${fmtDateTimeShort(c.estimated_meal_ts_ms)}</div>
-              <div class="meal-title" style="font-size:14px;">Probable Meal: ${c.baseline_bg} &rarr; ${c.peak_bg} mg/dL (+${c.delta_bg} mg/dL in ${c.time_to_peak_min}m)</div>
-            </div>
-            <button class="primary" onclick="openMealModalAtTimestamp(${c.estimated_meal_ts_ms})" style="padding:5px 10px;font-size:12px;">+ Label Meal</button>
-          </div>
-        </div>
-      `).join('');
+    function setQuickMealTimestamp(tsMs, focusInput = true) {
+      const str = formatTsForInput(tsMs);
+      const qInput = document.getElementById('quickMealDatetime');
+      if (qInput) qInput.value = str;
+      const mInput = document.getElementById('mealDatetime');
+      if (mInput) mInput.value = str;
+      if (focusInput) {
+        const titleEl = document.getElementById('quickMealTitle');
+        if (titleEl) titleEl.focus();
+      }
+    }
 
-      if (!meals.length && !candidatesHtml) {
-        container.innerHTML = `<div style="color:var(--text-2);font-size:13px;padding:18px 0;">No meals logged in the visible time window. Click <strong>+ Add Meal</strong> or pan the timeline.</div>`;
+    function renderMealsList(meals) {
+      const qInput = document.getElementById('quickMealDatetime');
+      if (qInput && !qInput.value) {
+        qInput.value = formatTsForInput(Date.now());
+      }
+      const container = document.getElementById('mealsContainer');
+      if (!meals.length) {
+        container.innerHTML = `<div style="color:var(--text-2);font-size:13px;padding:14px 0;">No meals logged in the visible time window. Type a quick description above (or double-click a point on the timeline chart to pre-fill the time).</div>`;
         return;
       }
-      container.innerHTML = candidatesHtml + meals.map(m => {
+      container.innerHTML = meals.map(m => {
         const badgeClass = m.classification === 'optimal' ? 'optimal' : (m.classification === 'moderate' ? 'moderate' : 'spike');
         const deltaStr = m.delta_bg != null ? `+${m.delta_bg} mg/dL` : 'N/A';
         const badgeLabel = m.classification === 'optimal'
@@ -1631,6 +1652,21 @@
       }
     });
 
+    // Double-click anywhere on the timeline chart to pre-fill meal time at that cursor point
+    tlCanvas.addEventListener('dblclick', (e) => {
+      const rect = tlCanvas.getBoundingClientRect();
+      const padL = 52, padR = 52;
+      const plotW = Math.max(100, rect.width - padL - padR);
+      const clickX = e.clientX - rect.left;
+      if (clickX >= padL && clickX <= padL + plotW) {
+        const clickedMs = Math.round(
+          state.viewStartMs + ((clickX - padL) / plotW) * (state.viewEndMs - state.viewStartMs)
+        );
+        setQuickMealTimestamp(clickedMs, true);
+        showToast(`Set quick-meal timestamp to ${fmtDateTimeShort(clickedMs)}`);
+      }
+    });
+
     // Horizontal wheel / trackpad pan
     tlCanvas.addEventListener('wheel', (e) => {
       if (Math.abs(e.deltaX) > Math.abs(e.deltaY) || e.shiftKey) {
@@ -1858,6 +1894,27 @@
     /* =========================================================================
        API Actions: Meals, Imports, Garmin Sync, Demo Reset
        ========================================================================= */
+    async function submitQuickMeal(e) {
+      e.preventDefault();
+      const title = document.getElementById('quickMealTitle').value.trim();
+      const dtVal = document.getElementById('quickMealDatetime').value;
+      if (!title || !dtVal) return;
+      const res = await fetch('/api/meals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title,
+          datetime_iso: dtVal.length === 16 ? dtVal + ':00' : dtVal,
+          tz: state.timeZone,
+          tag: 'meal',
+        }),
+      });
+      if (!res.ok) return showToast('Failed to log meal', true);
+      document.getElementById('quickMealTitle').value = '';
+      showToast('Meal logged!');
+      await fetchTimelineBuffer(false);
+    }
+
     async function submitMeal(e) {
       e.preventDefault();
       const numOrNull = (id) => {
@@ -1903,6 +1960,7 @@
         clarity_share_code: document.getElementById('clarityShareCode').value.trim(),
         garmin_email: document.getElementById('garminEmail').value.trim(),
         garmin_password: document.getElementById('garminPassword').value,
+        meals_csv_url: document.getElementById('mealsCsvUrl').value.trim(),
         auto_poll_minutes: parseInt(document.getElementById('modalPollMinutes').value, 10),
         lookback_days: parseInt(document.getElementById('modalLookbackDays').value, 10),
       };

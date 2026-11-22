@@ -33,6 +33,7 @@ from app.importers import (
     parse_dexcom_clarity_csv,
     parse_garmin_fit_bytes,
     parse_iso_or_flexible_ts,
+    parse_meals_csv,
     parse_nightscout_or_xdrip_json,
 )
 
@@ -92,6 +93,7 @@ class SyncSettingsRequest(BaseModel):
     clarity_share_code: Optional[str] = None
     garmin_email: Optional[str] = None
     garmin_password: Optional[str] = None
+    meals_csv_url: Optional[str] = None
     auto_poll_minutes: Optional[int] = None
     lookback_days: Optional[int] = None
 
@@ -100,6 +102,7 @@ class UnifiedSyncRequest(BaseModel):
     clarity_share_code: Optional[str] = None
     garmin_email: Optional[str] = None
     garmin_password: Optional[str] = None
+    meals_csv_url: Optional[str] = None
     start_date: Optional[str] = None
     end_date: Optional[str] = None
     tz: Optional[str] = "America/Los_Angeles"
@@ -558,6 +561,7 @@ def unified_sync_all_endpoint(req: UnifiedSyncRequest):
             "clarity_share_code": req.clarity_share_code,
             "garmin_email": req.garmin_email,
             "garmin_password": req.garmin_password,
+            "meals_csv_url": req.meals_csv_url,
             "auto_poll_minutes": req.auto_poll_minutes,
             "lookback_days": req.lookback_days,
         }.items()
@@ -577,8 +581,9 @@ def unified_sync_all_endpoint(req: UnifiedSyncRequest):
     share_code = (cfg.get("clarity_share_code") or "").strip()
     garmin_email = (cfg.get("garmin_email") or "").strip()
     garmin_password = cfg.get("garmin_password") or ""
+    meals_csv_url = (cfg.get("meals_csv_url") or "").strip()
 
-    if not share_code and not garmin_email:
+    if not share_code and not garmin_email and not meals_csv_url:
         return {
             "status": "unconfigured",
             "configured": False,
@@ -624,6 +629,19 @@ def unified_sync_all_endpoint(req: UnifiedSyncRequest):
             )
         except Exception as exc:
             errors.append(f"Garmin: {exc}")
+
+    if meals_csv_url:
+        try:
+            import requests as _req
+
+            m_resp = _req.get(meals_csv_url, timeout=15)
+            m_resp.raise_for_status()
+            sheet_meals = parse_meals_csv(m_resp.text, tz_name=req.tz)
+            for sm in sheet_meals:
+                insert_or_update_meal(sm)
+            parts.append(f"Meals Sheet: {len(sheet_meals)}")
+        except Exception as exc:
+            errors.append(f"Meals Sheet: {exc}")
 
     now_ms = int(now_dt.timestamp() * 1000)
     status = "ok" if not errors else ("partial" if parts else "error")

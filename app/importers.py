@@ -206,6 +206,57 @@ def parse_dexcom_clarity_csv(
     return {"glucose": glucose_list, "meals": meals_list}
 
 
+def parse_meals_csv(
+    csv_text: str,
+    tz_name: Optional[str] = "America/Los_Angeles",
+) -> List[Dict[str, Any]]:
+    """
+    Parse a simple descriptive meal log CSV (such as a Google Form -> Google Sheet published CSV)
+    with columns like `Timestamp`, `Meal` / `What did you eat?` / `Description`, and optional `Notes`.
+    """
+    cleaned = csv_text.lstrip("\ufeff")
+    rows = list(csv.reader(io.StringIO(cleaned)))
+    if len(rows) < 2:
+        return []
+
+    header = [c.strip().lower() for c in rows[0]]
+    ts_col = 0
+    title_col = 1
+    notes_col: Optional[int] = 2 if len(header) > 2 else None
+
+    for i, col in enumerate(header):
+        if "time" in col or "date" in col:
+            ts_col = i
+        elif any(k in col for k in ("meal", "food", "eat", "ate", "what", "title", "desc")):
+            title_col = i
+        elif any(k in col for k in ("note", "comment", "context")):
+            notes_col = i
+
+    meals: List[Dict[str, Any]] = []
+    for row in rows[1:]:
+        if not row or len(row) <= max(ts_col, title_col):
+            continue
+        ts_ms = parse_iso_or_flexible_ts(row[ts_col], default_tz=tz_name)
+        title = row[title_col].strip()
+        if not ts_ms or not title:
+            continue
+        notes = row[notes_col].strip() if (notes_col is not None and notes_col < len(row)) else ""
+        meals.append(
+            {
+                "timestamp_ms": ts_ms,
+                "title": title,
+                "notes": notes,
+                "carbs_g": None,
+                "protein_g": None,
+                "fat_g": None,
+                "calories": None,
+                "tag": "meal",
+                "source": "google_sheet",
+            }
+        )
+    return meals
+
+
 def parse_nightscout_or_xdrip_json(payload: Any, source: str = "xdrip_zukka") -> Dict[str, List[Dict[str, Any]]]:
     """
     Parse xDrip+ / Zukka / Nightscout JSON payloads.
