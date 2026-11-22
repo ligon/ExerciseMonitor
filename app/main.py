@@ -485,12 +485,37 @@ async def import_nightscout_json(file: UploadFile = File(...)):
     }
 
 
+@app.get("/api/v1/experiments/test")
+@app.post("/api/v1/experiments/test")
+@app.get("/api/v1/status")
+@app.get("/api/v1/status.json")
+async def nightscout_auth_test():
+    """Nightscout credential test endpoint required by Zukka / xDrip4iOS (`NightscoutSyncManager`)."""
+    return JSONResponse({"status": "ok", "name": "ExerciseMonitor", "apiEnabled": True})
+
+
+@app.get("/api/v1/profile")
+@app.post("/api/v1/profile")
+@app.get("/api/v1/devicestatus")
+@app.post("/api/v1/devicestatus")
+@app.post("/api/v1/devicestatus.json")
+async def nightscout_noop_endpoints():
+    """Nightscout profile & devicestatus compatibility endpoints for Zukka / xDrip+."""
+    return JSONResponse([])
+
+
+@app.get("/api/v1/entries")
+@app.get("/api/v1/entries.json")
+async def nightscout_get_entries():
+    return JSONResponse([])
+
+
 @app.post("/api/v1/entries")
 @app.post("/api/v1/entries.json")
 async def nightscout_entries_webhook(request: Request):
     """
     Nightscout REST API v1 compatible webhook endpoint for Zukka (iPhone) and xDrip+ (Android).
-    Point Nightscout URL in Zukka/xDrip+ to `http://<host>:8000/api/v1`.
+    Point Nightscout URL in Zukka/xDrip+ to `http://<host>:8000`.
     """
     payload = await request.json()
     parsed = parse_nightscout_or_xdrip_json(payload, source="live_webhook")
@@ -498,7 +523,14 @@ async def nightscout_entries_webhook(request: Request):
     return JSONResponse([{"status": "ok", "imported": g_cnt}])
 
 
+@app.get("/api/v1/treatments")
+@app.get("/api/v1/treatments.json")
+async def nightscout_get_treatments():
+    return JSONResponse([])
+
+
 @app.post("/api/v1/treatments")
+@app.put("/api/v1/treatments")
 @app.post("/api/v1/treatments.json")
 async def nightscout_treatments_webhook(request: Request):
     """Nightscout REST API v1 compatible treatments (meals/carbs/notes) webhook for Zukka and xDrip+."""
