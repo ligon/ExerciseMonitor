@@ -10,8 +10,12 @@ echo ========================================================
 if exist ".git" (
     where git >nul 2>nul
     if %ERRORLEVEL% EQU 0 (
-        echo [Update] Checking for latest updates from Git repository...
+        echo [Update] Pulling latest updates via Git...
         git pull --ff-only
+    )
+) else (
+    if exist ".venv\Scripts\python.exe" (
+        ".venv\Scripts\python.exe" update.py
     )
 )
 

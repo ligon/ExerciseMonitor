@@ -11,8 +11,12 @@ A local, privacy-first 24/7 timeline dashboard combining:
 
 1. **Install Python 3.11+** (if not already installed):
    - Download from [python.org/downloads](https://www.python.org/downloads/) (check **"Add python.exe to PATH"** in the installer), or install **Python 3.12** from the Microsoft Store.
-2. **Double-click `run.bat`**:
+2. **Download or Clone this Repository:**
+   - **No-Git option:** Click **Code → Download ZIP** on [github.com/ligon/ExerciseMonitor](https://github.com/ligon/ExerciseMonitor) and extract the folder.
+   - **Git option:** `git clone https://github.com/ligon/ExerciseMonitor.git`
+3. **Double-click `run.bat`**:
    - On the first run, `run.bat` automatically creates a `.venv` folder, installs all dependencies from `requirements.txt` (including `tzdata` for Windows timezones), opens **http://localhost:8000** in your browser, and starts the local server.
+   - **Automatic Upgrades:** Every time you double-click `run.bat`, it automatically fetches the latest code updates from `https://github.com/ligon/ExerciseMonitor` (via `git pull` if cloned with Git, or via `update.py` over HTTPS if downloaded as a ZIP) while preserving your local `data/monitor.db` database!
 
 ---
 
