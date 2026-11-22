@@ -331,13 +331,26 @@ def parse_nightscout_or_xdrip_json(payload: Any, source: str = "xdrip_zukka") ->
             notes and sgv_raw is None
         ):
             carbs_f = float(carbs) if carbs is not None and str(carbs).strip() != "" else None
+            if carbs_f == 0.0:
+                carbs_f = None
             raw_note = str(item.get("notes") or "").strip()
-            is_symptom_note = (carbs_f is None or carbs_f == 0) and (
+            is_symptom_note = (carbs_f is None) and (
                 raw_note.startswith("!")
-                or "note" in ev_type
+                or not raw_note
                 or any(
                     w in raw_note.lower()
-                    for w in ("dizzy", "dizziness", "symptom", "lightheaded", "event", "marker", "fatigue", "headache")
+                    for w in (
+                        "dizzy",
+                        "dizziness",
+                        "symptom",
+                        "lightheaded",
+                        "event",
+                        "marker",
+                        "fatigue",
+                        "headache",
+                        "nausea",
+                        "unusual",
+                    )
                 )
             )
             title = raw_note.lstrip("!").strip() or (
