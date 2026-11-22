@@ -1,0 +1,1666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stelo + Garmin 24/7 Metabolic &amp; Exercise Monitor</title>
+  <style>
+    :root {
+      --bg-0: #0b0f17;
+      --bg-1: #111827;
+      --bg-2: #1e293b;
+      --bg-3: #334155;
+      --text-0: #f8fafc;
+      --text-1: #cbd5e1;
+      --text-2: #94a3b8;
+      --accent-bg: #10b981;
+      --accent-bg-glow: rgba(16, 185, 129, 0.16);
+      --accent-hr: #f43f5e;
+      --accent-speed: #38bdf8;
+      --accent-climb: #a855f7;
+      --accent-meal: #f59e0b;
+      --border: rgba(148, 163, 184, 0.16);
+      --radius: 14px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg-0);
+      color: var(--text-0);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
+      line-height: 1.45;
+      padding-bottom: 48px;
+    }
+    header {
+      background: rgba(17, 24, 39, 0.9);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      padding: 14px 24px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .brand-icon {
+      width: 38px;
+      height: 38px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #10b981, #3b82f6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 18px;
+      color: #0b0f17;
+    }
+    .brand h1 {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .brand p {
+      font-size: 12px;
+      color: var(--text-2);
+    }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+    }
+    button, select, input {
+      font-family: inherit;
+      font-size: 13px;
+      color: var(--text-0);
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      padding: 8px 13px;
+      outline: none;
+      transition: all 0.15s ease;
+    }
+    button {
+      cursor: pointer;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    button:hover {
+      background: var(--bg-3);
+      border-color: rgba(148, 163, 184, 0.35);
+    }
+    button.primary {
+      background: linear-gradient(135deg, #10b981, #059669);
+      color: #051b11;
+      border: none;
+    }
+    button.primary:hover {
+      filter: brightness(1.08);
+    }
+    button.secondary-accent {
+      background: rgba(56, 189, 248, 0.14);
+      color: #38bdf8;
+      border-color: rgba(56, 189, 248, 0.35);
+    }
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 20px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .demo-banner {
+      background: rgba(245, 158, 11, 0.12);
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      border-radius: 12px;
+      padding: 10px 16px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      font-size: 13px;
+      color: #fcd34d;
+    }
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(195px, 1fr));
+      gap: 14px;
+    }
+    .kpi-card {
+      background: var(--bg-1);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 15px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .kpi-label {
+      font-size: 12px;
+      color: var(--text-2);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      font-weight: 600;
+    }
+    .kpi-val {
+      font-size: 26px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .kpi-sub {
+      font-size: 12px;
+      color: var(--text-2);
+    }
+    .panel {
+      background: var(--bg-1);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+    }
+    .panel-header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .panel-title {
+      font-size: 16px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 14px;
+      font-size: 12px;
+      color: var(--text-1);
+    }
+    .legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .canvas-wrap {
+      position: relative;
+      width: 100%;
+    }
+    canvas {
+      width: 100%;
+      display: block;
+      border-radius: 10px;
+      background: rgba(11, 15, 23, 0.55);
+      cursor: crosshair;
+    }
+    .tooltip-bar {
+      min-height: 28px;
+      margin-top: 8px;
+      padding: 6px 12px;
+      border-radius: 8px;
+      background: rgba(30, 41, 59, 0.65);
+      font-size: 12.5px;
+      color: var(--text-1);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 16px;
+    }
+    .two-col {
+      display: grid;
+      grid-template-columns: 1.1fr 1fr;
+      gap: 20px;
+    }
+    @media (max-width: 1024px) {
+      .two-col { grid-template-columns: 1fr; }
+    }
+    .meals-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .meal-card {
+      background: rgba(30, 41, 59, 0.55);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      transition: border-color 0.15s ease;
+    }
+    .meal-card:hover {
+      border-color: rgba(245, 158, 11, 0.5);
+    }
+    .meal-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .meal-time {
+      font-size: 12px;
+      color: var(--text-2);
+      font-weight: 600;
+    }
+    .meal-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text-0);
+    }
+    .badge {
+      font-size: 11.5px;
+      font-weight: 700;
+      padding: 3px 9px;
+      border-radius: 999px;
+      white-space: nowrap;
+    }
+    .badge.optimal { background: rgba(16, 185, 129, 0.18); color: #34d399; }
+    .badge.moderate { background: rgba(245, 158, 11, 0.18); color: #fbbf24; }
+    .badge.spike { background: rgba(244, 63, 94, 0.2); color: #fb7185; }
+    .badge.workout-ctx { background: rgba(56, 189, 248, 0.16); color: #38bdf8; }
+    .meal-metrics {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      background: rgba(15, 23, 42, 0.55);
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+    }
+    .meal-metrics div span {
+      display: block;
+      color: var(--text-2);
+      font-size: 11px;
+    }
+    .meal-metrics div strong {
+      font-size: 13.5px;
+    }
+    .workout-selector {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .workout-stats-strip {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .w-stat {
+      background: rgba(30, 41, 59, 0.5);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+    }
+    .w-stat span {
+      display: block;
+      font-size: 11px;
+      color: var(--text-2);
+      text-transform: uppercase;
+    }
+    .w-stat strong {
+      font-size: 17px;
+      font-weight: 700;
+    }
+    /* Modals */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(5, 8, 15, 0.78);
+      backdrop-filter: blur(4px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      padding: 16px;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal {
+      background: var(--bg-1);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      max-width: 580px;
+      width: 100%;
+      padding: 22px 24px;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    .modal h2 {
+      font-size: 18px;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .form-group.full { grid-column: 1 / -1; }
+    .form-group label {
+      font-size: 12px;
+      color: var(--text-1);
+      font-weight: 600;
+    }
+    .import-section {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 12px;
+      background: rgba(30, 41, 59, 0.35);
+    }
+    .import-section h3 {
+      font-size: 14px;
+      margin-bottom: 4px;
+    }
+    .import-section p {
+      font-size: 12px;
+      color: var(--text-2);
+      margin-bottom: 10px;
+    }
+    .toast {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: #10b981;
+      color: #041f14;
+      font-weight: 700;
+      font-size: 13px;
+      padding: 11px 18px;
+      border-radius: 10px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.45);
+      display: none;
+      z-index: 200;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="brand-icon">SG</div>
+      <div>
+        <h1>Stelo + Garmin 24/7 Monitor</h1>
+        <p>Blood Glucose &bull; 24/7 Heart Rate &bull; Meals &bull; Workout Speed &amp; Climb <span id="syncStatusPill" style="margin-left:8px;color:#34d399;font-weight:600;"></span></p>
+      </div>
+    </div>
+    <div class="controls">
+      <label for="dateSelect" style="font-size:12px;color:var(--text-2);">Day:</label>
+      <select id="dateSelect"></select>
+      <label for="tzSelect" style="font-size:12px;color:var(--text-2);">Timezone:</label>
+      <select id="tzSelect" title="Display &amp; Day-Boundary Timezone"></select>
+      <button id="unitToggleBtn" title="Switch Speed &amp; Elevation Units">Units: Imperial (mph / ft)</button>
+      <label for="pollSelect" style="font-size:12px;color:var(--text-2);">Auto-Poll:</label>
+      <select id="pollSelect" title="Automatically poll Stelo &amp; Garmin while dashboard is open">
+        <option value="0">Off</option>
+        <option value="5">Every 5m</option>
+        <option value="15" selected>Every 15m</option>
+        <option value="30">Every 30m</option>
+        <option value="60">Every 60m</option>
+      </select>
+      <button class="primary" id="syncBothBtn" onclick="syncAllNow(false)" title="One-click sync for both Dexcom Stelo &amp; Garmin Connect">🔄 Sync Now</button>
+      <button class="secondary-accent" onclick="openModal('mealModal')">+ Log Meal</button>
+      <button onclick="openModal('importModal')">⚙️ Setup / Import</button>
+    </div>
+  </header>
+
+  <div class="container">
+    <div id="demoBanner" class="demo-banner" style="display:none;">
+      <div>
+        <strong>Viewing Realistic 24-Hour Demo Dataset</strong> &mdash;
+        Explore the 5-min Stelo BG curve, 4 meals (breakfast spike vs. post-workout blunted lunch), 24/7 Garmin HR, and the 70-min Ridge Trail Climb workout below.
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button onclick="openModal('importModal')" style="background:#f59e0b;color:#111827;border:none;">Import Real Stelo / Garmin Data</button>
+      </div>
+    </div>
+
+    <!-- Top KPI Row -->
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <span class="kpi-label">Mean Glucose (24h)</span>
+        <div class="kpi-val" id="kpiMeanBg" style="color:var(--accent-bg);">--</div>
+        <span class="kpi-sub" id="kpiBgRange">Min -- / Max -- mg/dL</span>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">Tight TIR (70–140 mg/dL)</span>
+        <div class="kpi-val" id="kpiTirTight">--%</div>
+        <span class="kpi-sub" id="kpiTirStd">Standard (70–180): --%</span>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">Glycemic Variability (CV%)</span>
+        <div class="kpi-val" id="kpiCv">--%</div>
+        <span class="kpi-sub" id="kpiSdGmi">SD: -- mg/dL &bull; GMI: --%</span>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">24/7 Garmin Heart Rate</span>
+        <div class="kpi-val" id="kpiRestingHr" style="color:var(--accent-hr);">-- bpm</div>
+        <span class="kpi-sub" id="kpiHrRange">Avg -- / Max -- bpm</span>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">Exercise &amp; Total Climb</span>
+        <div class="kpi-val" id="kpiWorkoutClimb" style="color:var(--accent-climb);">--</div>
+        <span class="kpi-sub" id="kpiWorkoutDist">-- min active</span>
+      </div>
+    </div>
+
+    <!-- Main 24/7 Synchronized Timeline Chart -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          24/7 Synchronized Timeline: Blood Glucose, Heart Rate, Meals &amp; Workouts
+        </div>
+        <div class="legend">
+          <span class="legend-item"><span class="dot" style="background:#10b981;"></span>Stelo BG (mg/dL)</span>
+          <span class="legend-item"><span class="dot" style="background:rgba(16,185,129,0.25);border:1px solid #10b981;"></span>Target Band (70–140)</span>
+          <span class="legend-item"><span class="dot" style="background:#f43f5e;"></span>Garmin 24/7 HR (bpm)</span>
+          <span class="legend-item"><span class="dot" style="background:#f59e0b;"></span>Meal &amp; 2h Spike</span>
+          <span class="legend-item"><span class="dot" style="background:#38bdf8;"></span>Garmin Workout Window</span>
+        </div>
+      </div>
+      <div class="canvas-wrap">
+        <canvas id="timelineCanvas" height="340"></canvas>
+      </div>
+      <div class="tooltip-bar" id="timelineTooltip">
+        Hover or drag across the 24-hour chart to inspect synchronized Stelo Blood Glucose, Garmin Heart Rate, Meals, and Exercise windows.
+      </div>
+    </div>
+
+    <!-- Two Column: Meal Postprandial Excursion Cards + Workout Deep-Dive -->
+    <div class="two-col">
+      <!-- Meals & Postprandial Excursion Analysis -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">Meals &amp; 2-Hour Postprandial Glucose Response</div>
+          <button class="secondary-accent" onclick="openModal('mealModal')">+ Add Meal</button>
+        </div>
+        <div id="mealsContainer" class="meals-list"></div>
+      </div>
+
+      <!-- Workout Deep-Dive: Speed, Climb/Elevation, HR & Blood Glucose -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">Garmin Exercise Deep-Dive (BG + HR + Speed + Climb)</div>
+          <div id="workoutSelector" class="workout-selector"></div>
+        </div>
+        <div id="workoutStatsStrip" class="workout-stats-strip"></div>
+        <div class="canvas-wrap">
+          <canvas id="workoutCanvas" height="330"></canvas>
+        </div>
+        <div class="tooltip-bar" id="workoutTooltip">
+          Hover over the workout chart to see second-by-second Blood Glucose, Heart Rate, Speed, Elevation, and Grade %.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Log Meal -->
+  <div id="mealModal" class="modal-backdrop">
+    <div class="modal">
+      <h2>
+        <span>Log Meal / Nutrition Event</span>
+        <button onclick="closeModal('mealModal')">✕</button>
+      </h2>
+      <form id="mealForm" onsubmit="submitMeal(event)">
+        <div class="form-grid">
+          <div class="form-group full">
+            <label>Meal Description / Title *</label>
+            <input type="text" id="mealTitle" placeholder="e.g., Greek Yogurt, Berries &amp; Walnuts" required />
+          </div>
+          <div class="form-group">
+            <label>Date &amp; Time (<span id="mealTzLabel">Local</span>)</label>
+            <input type="datetime-local" id="mealDatetime" required />
+          </div>
+          <div class="form-group">
+            <label>Category / Tag</label>
+            <select id="mealTag">
+              <option value="breakfast">Breakfast</option>
+              <option value="lunch">Lunch</option>
+              <option value="dinner">Dinner</option>
+              <option value="snack">Snack</option>
+              <option value="pre_workout">Pre-Workout Fuel</option>
+              <option value="post_workout">Post-Workout Recovery</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Carbs (g)</label>
+            <input type="number" step="0.1" id="mealCarbs" placeholder="e.g., 45" />
+          </div>
+          <div class="form-group">
+            <label>Protein (g)</label>
+            <input type="number" step="0.1" id="mealProtein" placeholder="e.g., 30" />
+          </div>
+          <div class="form-group">
+            <label>Fat (g)</label>
+            <input type="number" step="0.1" id="mealFat" placeholder="e.g., 15" />
+          </div>
+          <div class="form-group">
+            <label>Calories (kcal)</label>
+            <input type="number" step="1" id="mealCalories" placeholder="e.g., 435" />
+          </div>
+          <div class="form-group full">
+            <label>Notes</label>
+            <input type="text" id="mealNotes" placeholder="Optional context (e.g., walked 15m after eating)" />
+          </div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:10px;">
+          <button type="button" onclick="closeModal('mealModal')">Cancel</button>
+          <button type="submit" class="primary">Save Meal</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Import / Sync Data -->
+  <div id="importModal" class="modal-backdrop">
+    <div class="modal">
+      <h2>
+        <span>Setup Auto-Sync &amp; Import Data</span>
+        <button onclick="closeModal('importModal')">✕</button>
+      </h2>
+
+      <!-- 0. Unified One-Button & Auto-Poll Credentials Setup -->
+      <div class="import-section" style="border-color:rgba(16,185,129,0.45);background:rgba(16,185,129,0.07);">
+        <h3>⚡ Unified One-Button &amp; Auto-Polling Setup (Stelo + Garmin)</h3>
+        <p>
+          Save your <strong>12-character Dexcom Clarity Share Code</strong> and <strong>Garmin Connect login</strong> once below.
+          Then the top-bar <strong>🔄 Sync Now</strong> button and <strong>Auto-Poll timer</strong> will automatically pull both Stelo 5-min BG/meals and Garmin 24/7 HR/workouts!
+        </p>
+        <div class="form-grid" style="margin-bottom:10px;">
+          <div class="form-group full">
+            <label>Dexcom Clarity 12-Character Share Code (Clarity App &rarr; Profile &rarr; Authorize Sharing &rarr; Generate Code)</label>
+            <input type="text" id="clarityShareCode" placeholder="XXXX-XXXX-XXXX" />
+          </div>
+          <div class="form-group">
+            <label>Garmin Connect Email</label>
+            <input type="email" id="garminEmail" placeholder="you@example.com" />
+          </div>
+          <div class="form-group">
+            <label>Garmin Connect Password <span id="garminPwSavedBadge" style="color:#34d399;font-weight:400;"></span></label>
+            <input type="password" id="garminPassword" placeholder="•••••••• (saved locally)" />
+          </div>
+          <div class="form-group">
+            <label>Auto-Poll Interval (when open)</label>
+            <select id="modalPollMinutes">
+              <option value="0">Off (Manual button only)</option>
+              <option value="5">Every 5 minutes</option>
+              <option value="15" selected>Every 15 minutes</option>
+              <option value="30">Every 30 minutes</option>
+              <option value="60">Every 60 minutes</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Sync Lookback Window</label>
+            <select id="modalLookbackDays">
+              <option value="1">Today only (1 day)</option>
+              <option value="2" selected>Today + Yesterday (2 days)</option>
+              <option value="7">Past 7 days</option>
+              <option value="14">Past 14 days</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+          <button onclick="saveSyncSettingsOnly()">Save Settings</button>
+          <button class="primary" onclick="saveAndSyncBothFromModal()">🔄 Save &amp; Sync Both Now</button>
+        </div>
+      </div>
+
+      <!-- 1. Manual Date-Range Sync or CSV Upload -->
+      <div class="import-section">
+        <h3>1. Manual Dexcom Clarity CSV Upload</h3>
+        <p style="margin-bottom:6px;">Or upload a manually downloaded <code>clarity.dexcom.com</code> CSV file:</p>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input type="file" id="clarityCsvInput" accept=".csv" style="flex:1;" />
+          <button onclick="uploadClarityCsv()">Upload CSV</button>
+        </div>
+      </div>
+
+      <!-- 2. Garmin FIT File Upload -->
+      <div class="import-section">
+        <h3>2. Manual Garmin Workout .FIT / .ZIP File Upload</h3>
+        <p>Upload any raw <strong>.fit</strong> activity file (or <strong>.zip</strong> downloaded from Garmin Connect) to extract per-second Heart Rate, Speed, Elevation Climb, Grade %, Cadence, and Power.</p>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input type="file" id="fitFileInput" accept=".fit,.zip" style="flex:1;" />
+          <button onclick="uploadFitFile()">Upload .FIT</button>
+        </div>
+      </div>
+
+      <!-- 4. Zukka / xDrip+ / Nightscout JSON & Webhook -->
+      <div class="import-section">
+        <h3>4. Brother's iPhone (Zukka / xDrip4iOS) or xDrip+ JSON / Live Webhook</h3>
+        <p>
+          <strong>Live Webhook:</strong> In Zukka or xDrip+, enable <em>Nightscout Upload (REST API)</em> and set the URL to
+          <code>http://&lt;this-device-ip&gt;:8000/api/v1</code> (pushes 5-min BG &amp; meal notes automatically).<br/>
+          <strong>Or upload a JSON export file:</strong>
+        </p>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input type="file" id="nsJsonInput" accept=".json" style="flex:1;" />
+          <button onclick="uploadNightscoutJson()">Upload JSON</button>
+        </div>
+      </div>
+
+      <!-- 5. Demo Data Reset -->
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">
+        <button onclick="reloadDemoDay()">Reload 24h Demo Day</button>
+        <button onclick="clearDemoDay()" style="color:#fb7185;">Clear Demo Data</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script>
+    const detectedTz = 'America/Los_Angeles';
+    let state = {
+      currentDate: null,
+      timeZone: localStorage.getItem('stelo_monitor_tz_v2') || 'America/Los_Angeles',
+      useImperial: true, // true => mph & ft, false => km/h & m
+      timeline: null,
+      activeWorkoutId: null,
+      activeWorkoutDetail: null,
+      highlightedMealId: null,
+      syncSettings: null,
+      pollTimerId: null,
+      isSyncing: false,
+    };
+
+    function populateTimezoneSelect() {
+      const commonTzs = [
+        { id: detectedTz, label: `Local (${detectedTz})` },
+        { id: 'America/Los_Angeles', label: 'America/Los_Angeles (PT)' },
+        { id: 'America/Denver', label: 'America/Denver (MT)' },
+        { id: 'America/Chicago', label: 'America/Chicago (CT)' },
+        { id: 'America/New_York', label: 'America/New_York (ET)' },
+        { id: 'Pacific/Honolulu', label: 'Pacific/Honolulu (HT)' },
+        { id: 'Europe/London', label: 'Europe/London' },
+        { id: 'Europe/Berlin', label: 'Europe/Berlin' },
+        { id: 'Asia/Tokyo', label: 'Asia/Tokyo' },
+        { id: 'UTC', label: 'UTC' },
+      ];
+      const seen = new Set();
+      const sel = document.getElementById('tzSelect');
+      sel.innerHTML = '';
+      commonTzs.forEach(item => {
+        if (!item.id || seen.has(item.id)) return;
+        seen.add(item.id);
+        const opt = document.createElement('option');
+        opt.value = item.id;
+        opt.textContent = item.label;
+        sel.appendChild(opt);
+      });
+      if (!seen.has(state.timeZone)) {
+        const opt = document.createElement('option');
+        opt.value = state.timeZone;
+        opt.textContent = state.timeZone;
+        sel.appendChild(opt);
+      }
+      sel.value = state.timeZone;
+    }
+
+    function fmtTimeLocal(tsMs) {
+      try {
+        const parts = new Intl.DateTimeFormat('en-US', {
+          timeZone: state.timeZone,
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false,
+        }).formatToParts(new Date(tsMs));
+        const h = parts.find(p => p.type === 'hour')?.value || '00';
+        const m = parts.find(p => p.type === 'minute')?.value || '00';
+        return `${h === '24' ? '00' : h}:${m}`;
+      } catch (e) {
+        const d = new Date(tsMs);
+        return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+      }
+    }
+
+    function showToast(msg, isError = false) {
+      const el = document.getElementById('toast');
+      el.textContent = msg;
+      el.style.background = isError ? '#f43f5e' : '#10b981';
+      el.style.color = isError ? '#fff' : '#041f14';
+      el.style.display = 'block';
+      setTimeout(() => { el.style.display = 'none'; }, 3800);
+    }
+
+    function openModal(id) {
+      if (id === 'mealModal' && state.currentDate) {
+        const dtInput = document.getElementById('mealDatetime');
+        document.getElementById('mealTzLabel').textContent = state.timeZone;
+        if (!dtInput.value) {
+          dtInput.value = `${state.currentDate}T12:30`;
+        }
+      }
+      if (id === 'importModal') {
+        loadSyncSettingsIntoUI();
+      }
+      document.getElementById(id).classList.add('open');
+    }
+
+    function closeModal(id) {
+      document.getElementById(id).classList.remove('open');
+    }
+
+    function fmtTimeUTC(tsMs) {
+      return fmtTimeLocal(tsMs);
+    }
+
+    function fmtSpeed(mps) {
+      if (mps == null) return '--';
+      if (state.useImperial) {
+        return `${(mps * 2.236936).toFixed(1)} mph`;
+      }
+      return `${(mps * 3.6).toFixed(1)} km/h`;
+    }
+
+    function fmtAltitude(meters) {
+      if (meters == null) return '--';
+      if (state.useImperial) {
+        return `${Math.round(meters * 3.28084)} ft`;
+      }
+      return `${Math.round(meters)} m`;
+    }
+
+    function fmtDistance(meters) {
+      if (meters == null) return '--';
+      if (state.useImperial) {
+        return `${(meters / 1609.344).toFixed(2)} mi`;
+      }
+      return `${(meters / 1000.0).toFixed(2)} km`;
+    }
+
+    document.getElementById('unitToggleBtn').addEventListener('click', () => {
+      state.useImperial = !state.useImperial;
+      document.getElementById('unitToggleBtn').textContent = state.useImperial
+        ? 'Units: Imperial (mph / ft)'
+        : 'Units: Metric (km/h / m)';
+      renderDashboard();
+      if (state.activeWorkoutDetail) {
+        renderWorkoutDeepDive(state.activeWorkoutDetail);
+      }
+    });
+
+    document.getElementById('dateSelect').addEventListener('change', (e) => {
+      loadDate(e.target.value);
+    });
+
+    document.getElementById('tzSelect').addEventListener('change', async (e) => {
+      state.timeZone = e.target.value;
+      localStorage.setItem('stelo_monitor_tz_v2', state.timeZone);
+      await initApp();
+    });
+
+    document.getElementById('pollSelect').addEventListener('change', async (e) => {
+      const mins = parseInt(e.target.value, 10);
+      await fetch('/api/sync/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ auto_poll_minutes: mins }),
+      });
+      await loadSyncSettingsIntoUI();
+      showToast(mins > 0 ? `Auto-polling enabled (every ${mins}m)` : 'Auto-polling turned off');
+    });
+
+    async function loadSyncSettingsIntoUI() {
+      try {
+        const res = await fetch('/api/sync/settings');
+        const cfg = await res.json();
+        state.syncSettings = cfg;
+        document.getElementById('clarityShareCode').value = cfg.clarity_share_code || '';
+        document.getElementById('garminEmail').value = cfg.garmin_email || '';
+        document.getElementById('garminPwSavedBadge').textContent = cfg.has_garmin_password ? '(Saved ✓)' : '';
+        const pollStr = String(cfg.auto_poll_minutes ?? 15);
+        document.getElementById('pollSelect').value = pollStr;
+        document.getElementById('modalPollMinutes').value = pollStr;
+        document.getElementById('modalLookbackDays').value = String(cfg.lookback_days ?? 2);
+        updateSyncStatusPill(cfg);
+        configureAutoPollTimer(cfg);
+      } catch (e) {}
+    }
+
+    function updateSyncStatusPill(cfg) {
+      const pill = document.getElementById('syncStatusPill');
+      if (!cfg || (!cfg.clarity_share_code && !cfg.garmin_email)) {
+        pill.textContent = '• Click "🔄 Sync Now" to configure 1-click Stelo + Garmin polling';
+        pill.style.color = '#94a3b8';
+        return;
+      }
+      if (cfg.last_sync_ms) {
+        const tStr = fmtTimeLocal(cfg.last_sync_ms);
+        pill.textContent = `• Last synced ${tStr} (${cfg.last_sync_detail || 'OK'})`;
+        pill.style.color = cfg.last_sync_status === 'error' ? '#fb7185' : '#34d399';
+      } else {
+        pill.textContent = '• Ready to sync Stelo + Garmin';
+        pill.style.color = '#34d399';
+      }
+    }
+
+    function configureAutoPollTimer(cfg) {
+      if (state.pollTimerId) {
+        clearInterval(state.pollTimerId);
+        state.pollTimerId = null;
+      }
+      const mins = parseInt(cfg?.auto_poll_minutes ?? 0, 10);
+      const isConfigured = Boolean(cfg?.clarity_share_code || cfg?.garmin_email);
+      if (mins > 0 && isConfigured) {
+        state.pollTimerId = setInterval(() => {
+          syncAllNow(true);
+        }, mins * 60 * 1000);
+      }
+    }
+
+    async function initApp() {
+      populateTimezoneSelect();
+      await loadSyncSettingsIntoUI();
+      const res = await fetch(`/api/dates?tz=${encodeURIComponent(state.timeZone)}`);
+      const data = await res.json();
+      const sel = document.getElementById('dateSelect');
+      sel.innerHTML = '';
+      data.dates.forEach(d => {
+        const opt = document.createElement('option');
+        opt.value = d;
+        opt.textContent = d;
+        sel.appendChild(opt);
+      });
+      document.getElementById('demoBanner').style.display = data.counts.has_demo ? 'flex' : 'none';
+      const targetDate = state.currentDate && data.dates.includes(state.currentDate)
+        ? state.currentDate
+        : data.latest_date;
+      sel.value = targetDate;
+      await loadDate(targetDate);
+    }
+
+    async function loadDate(dateStr) {
+      state.currentDate = dateStr;
+      const res = await fetch(`/api/timeline?date=${encodeURIComponent(dateStr)}&tz=${encodeURIComponent(state.timeZone)}`);
+      state.timeline = await res.json();
+      renderDashboard();
+
+      if (state.timeline.workouts && state.timeline.workouts.length > 0) {
+        await selectWorkout(state.timeline.workouts[0].id);
+      } else {
+        state.activeWorkoutId = null;
+        state.activeWorkoutDetail = null;
+        renderEmptyWorkout();
+      }
+    }
+
+    function renderDashboard() {
+      const t = state.timeline;
+      if (!t) return;
+      const gs = t.glucose_summary || {};
+      const hs = t.hr_summary || {};
+
+      document.getElementById('kpiMeanBg').textContent = gs.mean_mgdl != null ? `${gs.mean_mgdl} mg/dL` : '--';
+      document.getElementById('kpiBgRange').textContent = gs.min_mgdl != null
+        ? `Min ${gs.min_mgdl} / Max ${gs.max_mgdl} mg/dL (${gs.count} pts)`
+        : 'No Stelo data for this day';
+
+      document.getElementById('kpiTirTight').textContent = gs.tir_70_140_pct != null ? `${gs.tir_70_140_pct}%` : '--%';
+      document.getElementById('kpiTirStd').textContent = gs.tir_70_180_pct != null
+        ? `Standard (70–180): ${gs.tir_70_180_pct}%`
+        : 'Standard (70–180): --%';
+
+      document.getElementById('kpiCv').textContent = gs.cv_pct != null ? `${gs.cv_pct}%` : '--%';
+      document.getElementById('kpiSdGmi').textContent = gs.sd_mgdl != null
+        ? `SD: ${gs.sd_mgdl} mg/dL • GMI: ${gs.gmi_pct}%`
+        : 'Target CV < 20%';
+
+      document.getElementById('kpiRestingHr').textContent = hs.resting_hr != null ? `${hs.resting_hr} bpm` : '-- bpm';
+      document.getElementById('kpiHrRange').textContent = hs.avg_hr != null
+        ? `Avg ${hs.avg_hr} / Max ${hs.max_hr} bpm`
+        : 'No 24/7 Garmin HR yet';
+
+      document.getElementById('kpiWorkoutClimb').textContent = fmtAltitude(hs.total_climb_m || 0) + ' climb';
+      document.getElementById('kpiWorkoutDist').textContent = `${hs.total_workout_min || 0} min active • ${fmtDistance((hs.total_distance_km || 0) * 1000)}`;
+
+      renderMealsList(t.meals || [], t.unlogged_meal_candidates || []);
+      renderWorkoutButtons(t.workouts || []);
+      draw24hTimelineChart();
+    }
+
+    function openMealModalAtTimestamp(tsMs) {
+      try {
+        const parts = new Intl.DateTimeFormat('en-CA', {
+          timeZone: state.timeZone,
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false,
+        }).formatToParts(new Date(tsMs));
+        const get = (t) => parts.find(p => p.type === t)?.value || '00';
+        const hh = get('hour') === '24' ? '00' : get('hour');
+        document.getElementById('mealDatetime').value = `${get('year')}-${get('month')}-${get('day')}T${hh}:${get('minute')}`;
+      } catch (e) {}
+      openModal('mealModal');
+      document.getElementById('mealTitle').focus();
+    }
+
+    function renderMealsList(meals, unloggedCandidates = []) {
+      const container = document.getElementById('mealsContainer');
+      const candidatesHtml = (unloggedCandidates || []).map(c => `
+        <div class="meal-card" style="border-style:dashed;border-color:rgba(245,158,11,0.55);background:rgba(245,158,11,0.08);">
+          <div class="meal-top">
+            <div>
+              <div class="meal-time" style="color:#fbbf24;">⚡ Auto-Detected Unlogged Glucose Spike at ${fmtTimeLocal(c.estimated_meal_ts_ms)}</div>
+              <div class="meal-title" style="font-size:14px;">Probable Meal: ${c.baseline_bg} &rarr; ${c.peak_bg} mg/dL (+${c.delta_bg} mg/dL in ${c.time_to_peak_min}m)</div>
+            </div>
+            <button class="primary" onclick="openMealModalAtTimestamp(${c.estimated_meal_ts_ms})" style="padding:5px 10px;font-size:12px;">+ Label Meal</button>
+          </div>
+        </div>
+      `).join('');
+
+      if (!meals.length && !candidatesHtml) {
+        container.innerHTML = `<div style="color:var(--text-2);font-size:13px;padding:18px 0;">No meals logged for this day yet. Click <strong>+ Add Meal</strong> or sync Garmin/Clarity.</div>`;
+        return;
+      }
+      container.innerHTML = candidatesHtml + meals.map(m => {
+        const badgeClass = m.classification === 'optimal' ? 'optimal' : (m.classification === 'moderate' ? 'moderate' : 'spike');
+        const deltaStr = m.delta_bg != null ? `+${m.delta_bg} mg/dL` : 'N/A';
+        const badgeLabel = m.classification === 'optimal'
+          ? `Optimal (${deltaStr})`
+          : (m.classification === 'moderate' ? `Moderate (${deltaStr})` : `High Spike (${deltaStr})`);
+
+        const macros = [];
+        if (m.carbs_g != null) macros.push(`${m.carbs_g}g C`);
+        if (m.protein_g != null) macros.push(`${m.protein_g}g P`);
+        if (m.fat_g != null) macros.push(`${m.fat_g}g F`);
+        if (m.calories != null) macros.push(`${Math.round(m.calories)} kcal`);
+
+        return `
+          <div class="meal-card" onmouseenter="highlightMeal(${m.id})" onmouseleave="highlightMeal(null)">
+            <div class="meal-top">
+              <div>
+                <div class="meal-time">${fmtTimeLocal(m.timestamp_ms)} &bull; ${(m.tag || 'meal').replace('_', ' ').toUpperCase()} ${macros.length ? '&bull; ' + macros.join(' / ') : ''}</div>
+                <div class="meal-title">${m.title}</div>
+                ${m.notes ? `<div style="font-size:12px;color:var(--text-2);margin-top:2px;">${m.notes}</div>` : ''}
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;">
+                ${m.workout_context ? `<span class="badge workout-ctx">🏃 ${m.workout_context}</span>` : ''}
+                ${m.delta_bg != null ? `<span class="badge ${badgeClass}">${badgeLabel}</span>` : ''}
+                <button onclick="removeMeal(${m.id})" title="Delete meal" style="padding:3px 8px;font-size:11px;">✕</button>
+              </div>
+            </div>
+            <div class="meal-metrics">
+              <div><span>Baseline BG</span><strong>${m.baseline_bg != null ? m.baseline_bg + ' mg/dL' : '--'}</strong></div>
+              <div><span>2h Peak BG</span><strong>${m.peak_bg != null ? m.peak_bg + ' mg/dL' : '--'}</strong></div>
+              <div><span>Time to Peak</span><strong>${m.time_to_peak_min != null ? m.time_to_peak_min + ' min' : '--'}</strong></div>
+              <div><span>+2h Recovery BG</span><strong>${m.two_hour_bg != null ? m.two_hour_bg + ' mg/dL' : '--'}</strong></div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function highlightMeal(mealId) {
+      state.highlightedMealId = mealId;
+      draw24hTimelineChart();
+    }
+
+    function renderWorkoutButtons(workouts) {
+      const wrap = document.getElementById('workoutSelector');
+      if (!workouts.length) {
+        wrap.innerHTML = '';
+        return;
+      }
+      wrap.innerHTML = workouts.map(w => `
+        <button class="${w.id === state.activeWorkoutId ? 'primary' : ''}" onclick="selectWorkout(${w.id})">
+          ${fmtTimeUTC(w.start_time_ms)} ${w.title}
+        </button>
+      `).join('');
+    }
+
+    async function selectWorkout(workoutId) {
+      state.activeWorkoutId = workoutId;
+      renderWorkoutButtons(state.timeline.workouts || []);
+      const res = await fetch(`/api/workouts/${workoutId}`);
+      state.activeWorkoutDetail = await res.json();
+      renderWorkoutDeepDive(state.activeWorkoutDetail);
+    }
+
+    function renderEmptyWorkout() {
+      document.getElementById('workoutStatsStrip').innerHTML = `
+        <div style="grid-column:1/-1;color:var(--text-2);font-size:13px;">
+          No Garmin workouts on this date. Upload a <code>.fit</code> file or sync Garmin Connect.
+        </div>`;
+      const canvas = document.getElementById('workoutCanvas');
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+
+    function renderWorkoutDeepDive(detail) {
+      const w = detail.workout;
+      const strip = document.getElementById('workoutStatsStrip');
+      const bgDeltaStr = w.delta_bg != null ? (w.delta_bg >= 0 ? `+${w.delta_bg}` : `${w.delta_bg}`) : '--';
+      strip.innerHTML = `
+        <div class="w-stat"><span>Start &rarr; End BG</span><strong style="color:var(--accent-bg);">${w.start_bg ?? '--'} &rarr; ${w.end_bg ?? '--'} (${bgDeltaStr})</strong></div>
+        <div class="w-stat"><span>Workout BG Range</span><strong>${w.min_bg ?? '--'} – ${w.max_bg ?? '--'} mg/dL</strong></div>
+        <div class="w-stat"><span>Total Climb / Ascent</span><strong style="color:var(--accent-climb);">${fmtAltitude(w.total_ascent_m)}</strong></div>
+        <div class="w-stat"><span>Distance &amp; Avg Speed</span><strong style="color:var(--accent-speed);">${fmtDistance(w.distance_m)} &bull; ${fmtSpeed(w.avg_speed_mps)}</strong></div>
+        <div class="w-stat"><span>Heart Rate (Avg / Max)</span><strong style="color:var(--accent-hr);">${w.avg_hr ?? '--'} / ${w.max_hr ?? '--'} bpm</strong></div>
+      `;
+      drawWorkoutChart(detail);
+    }
+
+    /* =========================================================================
+       24/7 Synchronized Canvas Timeline (Stelo BG + Garmin HR + Meals + Workouts)
+       ========================================================================= */
+    function draw24hTimelineChart(hoverX = null) {
+      const canvas = document.getElementById('timelineCanvas');
+      const t = state.timeline;
+      if (!canvas || !t) return;
+
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width * dpr;
+      canvas.height = 340 * dpr;
+      const ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+
+      const W = rect.width;
+      const H = 340;
+      const padL = 52, padR = 52, padT = 24, padB = 34;
+      const plotW = W - padL - padR;
+      const plotH = H - padT - padB;
+
+      ctx.clearRect(0, 0, W, H);
+
+      const startMs = t.start_ms;
+      const endMs = t.end_ms;
+      const xForMs = (ms) => padL + ((ms - startMs) / (endMs - startMs)) * plotW;
+
+      // Y-axis Left: Blood Glucose (50 to 220 mg/dL)
+      const bgMin = 50, bgMax = 220;
+      const yForBg = (bg) => padT + plotH - ((Math.max(bgMin, Math.min(bgMax, bg)) - bgMin) / (bgMax - bgMin)) * plotH;
+
+      // Y-axis Right: Heart Rate (40 to 200 bpm)
+      const hrMin = 40, hrMax = 200;
+      const yForHr = (hr) => padT + plotH - ((Math.max(hrMin, Math.min(hrMax, hr)) - hrMin) / (hrMax - hrMin)) * plotH;
+
+      // 1. Target Glucose Zone Band (70 - 140 mg/dL)
+      const y140 = yForBg(140);
+      const y70 = yForBg(70);
+      ctx.fillStyle = 'rgba(16, 185, 129, 0.09)';
+      ctx.fillRect(padL, y140, plotW, y70 - y140);
+      ctx.strokeStyle = 'rgba(16, 185, 129, 0.28)';
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(padL, y140); ctx.lineTo(padL + plotW, y140);
+      ctx.moveTo(padL, y70); ctx.lineTo(padL + plotW, y70);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // 2. Shaded Workout Windows
+      (t.workouts || []).forEach(w => {
+        const x0 = Math.max(padL, xForMs(w.start_time_ms));
+        const x1 = Math.min(padL + plotW, xForMs(w.end_time_ms));
+        ctx.fillStyle = 'rgba(56, 189, 248, 0.14)';
+        ctx.fillRect(x0, padT, Math.max(4, x1 - x0), plotH);
+        ctx.strokeStyle = 'rgba(56, 189, 248, 0.5)';
+        ctx.strokeRect(x0, padT, Math.max(4, x1 - x0), plotH);
+        ctx.fillStyle = '#38bdf8';
+        ctx.font = '600 11px Inter, sans-serif';
+        ctx.fillText(`🏃 ${w.title}`, x0 + 6, padT + 15);
+      });
+
+      // 3. Highlighted Meal 2-Hour Postprandial Window
+      if (state.highlightedMealId) {
+        const hm = (t.meals || []).find(m => m.id === state.highlightedMealId);
+        if (hm) {
+          const x0 = Math.max(padL, xForMs(hm.timestamp_ms));
+          const x1 = Math.min(padL + plotW, xForMs(hm.timestamp_ms + 120 * 60 * 1000));
+          ctx.fillStyle = 'rgba(245, 158, 11, 0.16)';
+          ctx.fillRect(x0, padT, Math.max(4, x1 - x0), plotH);
+        }
+      }
+
+      // 4. Grid & Axes Labels
+      ctx.strokeStyle = 'rgba(148, 163, 184, 0.1)';
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '11px Inter, sans-serif';
+      [70, 100, 140, 180, 210].forEach(bg => {
+        const y = yForBg(bg);
+        ctx.beginPath();
+        ctx.moveTo(padL, y);
+        ctx.lineTo(padL + plotW, y);
+        ctx.stroke();
+        ctx.textAlign = 'right';
+        ctx.fillStyle = '#10b981';
+        ctx.fillText(`${bg}`, padL - 8, y + 4);
+      });
+
+      [60, 100, 140, 180].forEach(hr => {
+        const y = yForHr(hr);
+        ctx.textAlign = 'left';
+        ctx.fillStyle = '#f43f5e';
+        ctx.fillText(`${hr}`, padL + plotW + 8, y + 4);
+      });
+
+      // X-axis hour ticks (00:00 to 24:00)
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#94a3b8';
+      for (let h = 0; h <= 24; h += 3) {
+        const ms = startMs + h * 3600 * 1000;
+        const x = xForMs(ms);
+        ctx.beginPath();
+        ctx.moveTo(x, padT);
+        ctx.lineTo(x, padT + plotH);
+        ctx.stroke();
+        ctx.fillText(`${String(h).padStart(2, '0')}:00`, x, padT + plotH + 20);
+      }
+
+      // 5. Draw 24/7 Heart Rate Curve
+      const hrs = t.heart_rate || [];
+      if (hrs.length > 1) {
+        ctx.save();
+        ctx.beginPath();
+        hrs.forEach((r, idx) => {
+          const x = xForMs(r.timestamp_ms);
+          const y = yForHr(r.bpm);
+          if (idx === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        });
+        ctx.strokeStyle = 'rgba(244, 63, 94, 0.72)';
+        ctx.lineWidth = 1.6;
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // 6. Draw Stelo Blood Glucose Curve
+      const bgs = t.glucose || [];
+      if (bgs.length > 1) {
+        ctx.save();
+        ctx.beginPath();
+        bgs.forEach((r, idx) => {
+          const x = xForMs(r.timestamp_ms);
+          const y = yForBg(r.value_mgdl);
+          if (idx === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        });
+        ctx.strokeStyle = '#10b981';
+        ctx.lineWidth = 2.6;
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // 7. Draw Meal Markers on Glucose Curve
+      (t.meals || []).forEach(m => {
+        const x = xForMs(m.timestamp_ms);
+        const yBg = yForBg(m.baseline_bg || 100);
+        ctx.strokeStyle = 'rgba(245, 158, 11, 0.75)';
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        ctx.moveTo(x, padT);
+        ctx.lineTo(x, padT + plotH);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.fillStyle = '#f59e0b';
+        ctx.beginPath();
+        ctx.arc(x, yBg, 5.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        const deltaTxt = m.delta_bg != null ? `+${Math.round(m.delta_bg)}` : '';
+        ctx.font = '700 11px Inter, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(`🍽️ ${deltaTxt}`, x, Math.max(padT + 14, yBg - 10));
+      });
+
+      // 8. Interactive Crosshair
+      if (hoverX != null && hoverX >= padL && hoverX <= padL + plotW) {
+        const hoverMs = startMs + ((hoverX - padL) / plotW) * (endMs - startMs);
+        ctx.strokeStyle = 'rgba(248, 250, 252, 0.5)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(hoverX, padT);
+        ctx.lineTo(hoverX, padT + plotH);
+        ctx.stroke();
+
+        // Nearest BG & HR
+        let nearBg = null, minBgDist = Infinity;
+        bgs.forEach(r => {
+          const d = Math.abs(r.timestamp_ms - hoverMs);
+          if (d < minBgDist) { minBgDist = d; nearBg = r; }
+        });
+        let nearHr = null, minHrDist = Infinity;
+        hrs.forEach(r => {
+          const d = Math.abs(r.timestamp_ms - hoverMs);
+          if (d < minHrDist) { minHrDist = d; nearHr = r; }
+        });
+
+        if (nearBg && minBgDist < 20 * 60 * 1000) {
+          ctx.fillStyle = '#10b981';
+          ctx.beginPath();
+          ctx.arc(xForMs(nearBg.timestamp_ms), yForBg(nearBg.value_mgdl), 5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        if (nearHr && minHrDist < 15 * 60 * 1000) {
+          ctx.fillStyle = '#f43f5e';
+          ctx.beginPath();
+          ctx.arc(xForMs(nearHr.timestamp_ms), yForHr(nearHr.bpm), 4.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        const tip = document.getElementById('timelineTooltip');
+        tip.innerHTML = `
+          <strong>🕒 ${fmtTimeLocal(hoverMs)} (${state.timeZone})</strong>
+          <span style="color:#10b981;font-weight:700;">Stelo BG: ${nearBg ? nearBg.value_mgdl + ' mg/dL' : '--'} ${nearBg && nearBg.trend ? '(' + nearBg.trend + ')' : ''}</span>
+          <span style="color:#f43f5e;font-weight:700;">Garmin HR: ${nearHr ? nearHr.bpm + ' bpm' : '--'}</span>
+        `;
+      }
+    }
+
+    const tlCanvas = document.getElementById('timelineCanvas');
+    tlCanvas.addEventListener('mousemove', (e) => {
+      const rect = tlCanvas.getBoundingClientRect();
+      draw24hTimelineChart(e.clientX - rect.left);
+    });
+    tlCanvas.addEventListener('mouseleave', () => draw24hTimelineChart(null));
+
+    /* =========================================================================
+       Workout Deep-Dive Multi-Trace Canvas (BG + HR + Speed + Altitude/Climb)
+       ========================================================================= */
+    function drawWorkoutChart(detail, hoverX = null) {
+      const canvas = document.getElementById('workoutCanvas');
+      if (!canvas || !detail || !detail.points || !detail.points.length) return;
+
+      const pts = detail.points;
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width * dpr;
+      canvas.height = 330 * dpr;
+      const ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+
+      const W = rect.width;
+      const H = 330;
+      const padL = 48, padR = 48, padT = 18, padB = 28;
+      const plotW = W - padL - padR;
+
+      // Split into two stacked synchronized bands:
+      // Top band (52% height): Blood Glucose (green) + Heart Rate (red)
+      // Bottom band (42% height): Elevation Climb profile (purple shaded area) + Speed (cyan line)
+      const topH = (H - padT - padB) * 0.50;
+      const gapH = 18;
+      const botT = padT + topH + gapH;
+      const botH = (H - padT - padB) - topH - gapH;
+
+      ctx.clearRect(0, 0, W, H);
+
+      const minMs = pts[0].timestamp_ms;
+      const maxMs = pts[pts.length - 1].timestamp_ms;
+      const spanMs = Math.max(1, maxMs - minMs);
+      const xForMs = (ms) => padL + ((ms - minMs) / spanMs) * plotW;
+
+      // Top band scales
+      const bgs = pts.map(p => p.glucose_mgdl).filter(v => v != null);
+      const bgLow = Math.min(65, ...(bgs.length ? bgs : [70])) - 5;
+      const bgHigh = Math.max(145, ...(bgs.length ? bgs : [140])) + 10;
+      const yForBg = (v) => padT + topH - ((v - bgLow) / Math.max(1, bgHigh - bgLow)) * topH;
+
+      const hrs = pts.map(p => p.heart_rate).filter(v => v != null);
+      const hrLow = Math.min(90, ...(hrs.length ? hrs : [90])) - 5;
+      const hrHigh = Math.max(185, ...(hrs.length ? hrs : [180])) + 5;
+      const yForHr = (v) => padT + topH - ((v - hrLow) / Math.max(1, hrHigh - hrLow)) * topH;
+
+      // Bottom band scales (Altitude & Speed)
+      const alts = pts.map(p => p.altitude_m).filter(v => v != null);
+      const altLow = (alts.length ? Math.min(...alts) : 0) - 5;
+      const altHigh = (alts.length ? Math.max(...alts) : 100) + 10;
+      const yForAlt = (v) => botT + botH - ((v - altLow) / Math.max(1, altHigh - altLow)) * botH;
+
+      const spds = pts.map(p => p.speed_mps).filter(v => v != null);
+      const spdLow = 0;
+      const spdHigh = Math.max(4.5, ...(spds.length ? spds : [4.5])) * 1.1;
+      const yForSpd = (v) => botT + botH - ((v - spdLow) / Math.max(0.1, spdHigh - spdLow)) * botH;
+
+      // Borders for top & bottom bands
+      ctx.strokeStyle = 'rgba(148, 163, 184, 0.14)';
+      ctx.strokeRect(padL, padT, plotW, topH);
+      ctx.strokeRect(padL, botT, plotW, botH);
+
+      // 1. Bottom Band: Shaded Altitude / Climb Terrain Profile
+      if (alts.length > 1) {
+        ctx.save();
+        ctx.beginPath();
+        pts.forEach((p, i) => {
+          const x = xForMs(p.timestamp_ms);
+          const y = yForAlt(p.altitude_m ?? altLow);
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        });
+        ctx.lineTo(padL + plotW, botT + botH);
+        ctx.lineTo(padL, botT + botH);
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(168, 85, 247, 0.24)';
+        ctx.fill();
+
+        ctx.beginPath();
+        pts.forEach((p, i) => {
+          const x = xForMs(p.timestamp_ms);
+          const y = yForAlt(p.altitude_m ?? altLow);
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        });
+        ctx.strokeStyle = '#a855f7';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // 2. Bottom Band: Speed Line
+      if (spds.length > 1) {
+        ctx.save();
+        ctx.beginPath();
+        pts.forEach((p, i) => {
+          if (p.speed_mps == null) return;
+          const x = xForMs(p.timestamp_ms);
+          const y = yForSpd(p.speed_mps);
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        });
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 1.8;
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // 3. Top Band: Heart Rate Curve
+      if (hrs.length > 1) {
+        ctx.save();
+        ctx.beginPath();
+        pts.forEach((p, i) => {
+          if (p.heart_rate == null) return;
+          const x = xForMs(p.timestamp_ms);
+          const y = yForHr(p.heart_rate);
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        });
+        ctx.strokeStyle = '#f43f5e';
+        ctx.lineWidth = 1.8;
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // 4. Top Band: Stelo Blood Glucose Curve
+      if (bgs.length > 1) {
+        ctx.save();
+        ctx.beginPath();
+        let started = false;
+        pts.forEach((p) => {
+          if (p.glucose_mgdl == null) return;
+          const x = xForMs(p.timestamp_ms);
+          const y = yForBg(p.glucose_mgdl);
+          if (!started) { ctx.moveTo(x, y); started = true; }
+          else ctx.lineTo(x, y);
+        });
+        ctx.strokeStyle = '#10b981';
+        ctx.lineWidth = 2.6;
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Labels
+      ctx.font = '600 11px Inter, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#10b981';
+      ctx.fillText('BG (mg/dL)', padL + 6, padT + 14);
+      ctx.fillStyle = '#f43f5e';
+      ctx.fillText('HR (bpm)', padL + 80, padT + 14);
+      ctx.fillStyle = '#a855f7';
+      ctx.fillText('Elevation / Climb', padL + 6, botT + 14);
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillText('Speed', padL + 115, botT + 14);
+
+      // Elapsed time ticks
+      ctx.fillStyle = '#94a3b8';
+      ctx.textAlign = 'center';
+      for (let frac = 0; frac <= 1.0; frac += 0.25) {
+        const ms = minMs + frac * spanMs;
+        const x = xForMs(ms);
+        const mins = Math.round((frac * spanMs) / 60000);
+        ctx.fillText(`+${mins}m`, x, botT + botH + 18);
+      }
+
+      // Hover Crosshair
+      if (hoverX != null && hoverX >= padL && hoverX <= padL + plotW) {
+        const hoverMs = minMs + ((hoverX - padL) / plotW) * spanMs;
+        let nearPt = pts[0], minDist = Infinity;
+        pts.forEach(p => {
+          const d = Math.abs(p.timestamp_ms - hoverMs);
+          if (d < minDist) { minDist = d; nearPt = p; }
+        });
+
+        const cx = xForMs(nearPt.timestamp_ms);
+        ctx.strokeStyle = 'rgba(248, 250, 252, 0.55)';
+        ctx.beginPath();
+        ctx.moveTo(cx, padT);
+        ctx.lineTo(cx, botT + botH);
+        ctx.stroke();
+
+        const tip = document.getElementById('workoutTooltip');
+        const elapsedMin = Math.floor((nearPt.elapsed_s || 0) / 60);
+        const elapsedSec = Math.round((nearPt.elapsed_s || 0) % 60);
+        tip.innerHTML = `
+          <strong>+${elapsedMin}:${String(elapsedSec).padStart(2, '0')}</strong>
+          <span style="color:#10b981;font-weight:700;">BG: ${nearPt.glucose_mgdl != null ? nearPt.glucose_mgdl + ' mg/dL' : '--'}</span>
+          <span style="color:#f43f5e;font-weight:700;">HR: ${nearPt.heart_rate != null ? nearPt.heart_rate + ' bpm' : '--'}</span>
+          <span style="color:#38bdf8;font-weight:700;">Speed: ${fmtSpeed(nearPt.speed_mps)}</span>
+          <span style="color:#a855f7;font-weight:700;">Elev: ${fmtAltitude(nearPt.altitude_m)} (${nearPt.grade_pct != null ? (nearPt.grade_pct >= 0 ? '+' : '') + nearPt.grade_pct + '% grade' : '0%'})</span>
+        `;
+      }
+    }
+
+    const wCanvas = document.getElementById('workoutCanvas');
+    wCanvas.addEventListener('mousemove', (e) => {
+      if (!state.activeWorkoutDetail) return;
+      const rect = wCanvas.getBoundingClientRect();
+      drawWorkoutChart(state.activeWorkoutDetail, e.clientX - rect.left);
+    });
+    wCanvas.addEventListener('mouseleave', () => {
+      if (state.activeWorkoutDetail) drawWorkoutChart(state.activeWorkoutDetail, null);
+    });
+
+    window.addEventListener('resize', () => {
+      draw24hTimelineChart();
+      if (state.activeWorkoutDetail) drawWorkoutChart(state.activeWorkoutDetail);
+    });
+
+    /* =========================================================================
+       API Actions: Meals, Imports, Garmin Sync, Demo Reset
+       ========================================================================= */
+    async function submitMeal(e) {
+      e.preventDefault();
+      const numOrNull = (id) => {
+        const v = document.getElementById(id).value;
+        return v !== '' ? parseFloat(v) : null;
+      };
+      const payload = {
+        title: document.getElementById('mealTitle').value,
+        datetime_iso: document.getElementById('mealDatetime').value + ':00',
+        tz: state.timeZone,
+        tag: document.getElementById('mealTag').value,
+        carbs_g: numOrNull('mealCarbs'),
+        protein_g: numOrNull('mealProtein'),
+        fat_g: numOrNull('mealFat'),
+        calories: numOrNull('mealCalories'),
+        notes: document.getElementById('mealNotes').value,
+      };
+      const res = await fetch('/api/meals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        showToast('Failed to save meal', true);
+        return;
+      }
+      const out = await res.json();
+      closeModal('mealModal');
+      document.getElementById('mealForm').reset();
+      showToast('Meal logged & postprandial curve updated!');
+      state.currentDate = out.date;
+      await initApp();
+    }
+
+    async function removeMeal(mealId) {
+      await fetch(`/api/meals/${mealId}`, { method: 'DELETE' });
+      showToast('Meal removed');
+      await loadDate(state.currentDate);
+    }
+
+    async function saveSyncSettingsOnly() {
+      const payload = {
+        clarity_share_code: document.getElementById('clarityShareCode').value.trim(),
+        garmin_email: document.getElementById('garminEmail').value.trim(),
+        garmin_password: document.getElementById('garminPassword').value,
+        auto_poll_minutes: parseInt(document.getElementById('modalPollMinutes').value, 10),
+        lookback_days: parseInt(document.getElementById('modalLookbackDays').value, 10),
+      };
+      const res = await fetch('/api/sync/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        await loadSyncSettingsIntoUI();
+        showToast('Sync & auto-polling settings saved!');
+      }
+    }
+
+    async function saveAndSyncBothFromModal() {
+      await saveSyncSettingsOnly();
+      closeModal('importModal');
+      await syncAllNow(false);
+    }
+
+    async function syncAllNow(isBackgroundPoll = false) {
+      if (state.isSyncing) return;
+      const cfg = state.syncSettings;
+      if (!isBackgroundPoll && (!cfg || (!cfg.clarity_share_code && !cfg.garmin_email))) {
+        openModal('importModal');
+        showToast('Enter your Clarity Share Code and/or Garmin login once to enable 1-click sync');
+        return;
+      }
+      state.isSyncing = true;
+      const btn = document.getElementById('syncBothBtn');
+      const oldText = btn.textContent;
+      btn.textContent = '⏳ Syncing...';
+      if (!isBackgroundPoll) {
+        showToast('Syncing Dexcom Stelo + Garmin Connect...');
+      }
+      try {
+        const res = await fetch('/api/sync/all', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tz: state.timeZone }),
+        });
+        const out = await res.json();
+        await loadSyncSettingsIntoUI();
+        if (out.status === 'unconfigured') {
+          if (!isBackgroundPoll) openModal('importModal');
+        } else if (out.status === 'error') {
+          if (!isBackgroundPoll) showToast(out.detail || 'Sync encountered an error', true);
+        } else {
+          if (!isBackgroundPoll) showToast(`Synced! ${out.detail}`);
+          await initApp();
+        }
+      } catch (e) {
+        if (!isBackgroundPoll) showToast('Sync request failed', true);
+      } finally {
+        state.isSyncing = false;
+        btn.textContent = oldText;
+      }
+    }
+
+    async function uploadClarityCsv() {
+      const inp = document.getElementById('clarityCsvInput');
+      if (!inp.files.length) return showToast('Select a CSV file first', true);
+      const fd = new FormData();
+      fd.append('file', inp.files[0]);
+      fd.append('tz', state.timeZone);
+      const res = await fetch('/api/import/clarity-csv', { method: 'POST', body: fd });
+      const out = await res.json();
+      if (!res.ok) return showToast(out.detail || 'CSV import failed', true);
+      closeModal('importModal');
+      showToast(`Imported ${out.glucose_imported} Stelo BG readings & ${out.meals_imported} meals!`);
+      if (out.latest_date) state.currentDate = out.latest_date;
+      await initApp();
+    }
+
+    async function uploadFitFile() {
+      const inp = document.getElementById('fitFileInput');
+      if (!inp.files.length) return showToast('Select a .FIT or .ZIP file first', true);
+      const fd = new FormData();
+      fd.append('file', inp.files[0]);
+      fd.append('tz', state.timeZone);
+      const res = await fetch('/api/import/fit', { method: 'POST', body: fd });
+      const out = await res.json();
+      if (!res.ok) return showToast(out.detail || 'FIT import failed', true);
+      closeModal('importModal');
+      showToast(`Imported ${out.title} (${out.points_imported} track points)!`);
+      if (out.date) state.currentDate = out.date;
+      await initApp();
+    }
+
+    async function uploadNightscoutJson() {
+      const inp = document.getElementById('nsJsonInput');
+      if (!inp.files.length) return showToast('Select a JSON file first', true);
+      const fd = new FormData();
+      fd.append('file', inp.files[0]);
+      const res = await fetch('/api/import/nightscout-json', { method: 'POST', body: fd });
+      const out = await res.json();
+      if (!res.ok) return showToast(out.detail || 'JSON import failed', true);
+      closeModal('importModal');
+      showToast(`Imported ${out.glucose_imported} BG points & ${out.meals_imported} meals!`);
+      if (out.latest_date) state.currentDate = out.latest_date;
+      await initApp();
+    }
+
+    async function reloadDemoDay() {
+      await fetch(`/api/demo/seed?tz=${encodeURIComponent(state.timeZone)}`, { method: 'POST' });
+      closeModal('importModal');
+      showToast('Reloaded 24-hour realistic demo dataset in ' + state.timeZone);
+      await initApp();
+    }
+
+    async function clearDemoDay() {
+      await fetch('/api/demo', { method: 'DELETE' });
+      closeModal('importModal');
+      showToast('Cleared demo data');
+      await initApp();
+    }
+
+    initApp();
+  </script>
+</body>
+</html>
